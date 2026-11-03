@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@thomasrepnik/ts-implscan)](https://www.npmjs.com/package/@thomasrepnik/ts-implscan)
 [![CI](https://github.com/thomasrepnik/ts-implscan/actions/workflows/ci.yml/badge.svg)](https://github.com/thomasrepnik/ts-implscan/actions/workflows/ci.yml)
 
-**Spring-style `List<A>` injection for TypeScript.** Mark an interface with `ImplScan`, and a
+**Spring-style `List<PaymentHandler>` injection for TypeScript.** Mark an interface with `ImplScan`, and a
 build-time generator collects every class that implements it into a typed registry. For Angular,
 it also generates the `InjectionToken`s and providers.
 
@@ -215,7 +215,7 @@ reasons, such as Angular's `OnInit`.
 
 - **Plugin and strategy patterns**, such as payment providers, exporters, validators, notification
   channels or feature handlers, where the set of implementations keeps growing.
-- **Teams coming from Spring or Java** who want the open/closed principle that `List<A>` injection
+- **Teams coming from Spring or Java** who want the open/closed principle that `List<PaymentHandler>` injection
   gives them: adding behaviour means adding a class, not editing a central list.
 - **Angular apps** with many multi-provider tokens, so nobody forgets to register a new
   implementation, or to write the token.

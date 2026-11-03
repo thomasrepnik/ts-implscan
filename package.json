@@ -1,7 +1,7 @@
 {
   "name": "@thomasrepnik/ts-implscan",
   "version": "0.1.2",
-  "description": "Spring-style List<A> injection for TypeScript: find every class implementing a marked interface and generate a typed registry, plus Angular InjectionTokens and providers.",
+  "description": "Spring-style List<PaymentHandler> injection for TypeScript: find every class implementing a marked interface and generate a typed registry, plus Angular InjectionTokens and providers.",
   "keywords": [
     "typescript",
     "dependency-injection",
