@@ -32,7 +32,7 @@
   },
   "types": "./dist/index.d.ts",
   "bin": {
-    "ts-implscan": "./dist/cli.js"
+    "ts-implscan": "dist/cli.js"
   },
   "files": [
     "dist"
