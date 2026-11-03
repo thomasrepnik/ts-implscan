@@ -3,7 +3,9 @@
 [![npm](https://img.shields.io/npm/v/@thomasrepnik/ts-implscan)](https://www.npmjs.com/package/@thomasrepnik/ts-implscan)
 [![CI](https://github.com/thomasrepnik/ts-implscan/actions/workflows/ci.yml/badge.svg)](https://github.com/thomasrepnik/ts-implscan/actions/workflows/ci.yml)
 
-**Spring-style `List<A>` injection for TypeScript.** Find every `implements A` and generate the registry.
+**Spring-style `List<A>` injection for TypeScript.** Mark an interface with `ImplScan`, and a
+build-time generator collects every class that implements it into a typed registry. For Angular,
+it also generates the `InjectionToken`s and providers.
 
 ## Installation
 
