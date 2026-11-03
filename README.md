@@ -91,22 +91,73 @@ The generator only runs at build time, so nothing from it ends up in your produc
    "prebuild": "npm run generate"
    ```
    On Node versions older than 22.18, run it with `npx tsx` instead of `node`.
-3. Register every implementation as a multi provider:
-   ```ts
-   // payment-handler.ts
-   export interface PaymentHandler { name: string; pay(amount: number): string }
-   export const PAYMENT_HANDLERS = new InjectionToken<PaymentHandler[]>('PAYMENT_HANDLERS');
+3. Wire the generated list into your app. See the next section.
 
-   // app.config.ts
-   import { PaymentHandlerImplementations } from './generated/registry';
-   providers: [
-     ...PaymentHandlerImplementations.map((useClass) => ({ provide: PAYMENT_HANDLERS, useClass, multi: true })),
-   ]
+### Wiring the generated list into DI
 
-   // anywhere: the equivalent of Spring's List<PaymentHandler>
-   private readonly handlers = inject(PAYMENT_HANDLERS);
-   ```
-   Mark implementations with `@Injectable()` so they can use DI themselves.
+`registry.ts` holds **classes, not instances**, and Angular's DI knows nothing about it.
+Something has to turn the classes into objects. There are three ways to do that.
+
+**A: plain `new`.** This is the simplest option.
+
+```ts
+handlers = PaymentHandlerImplementations.map((C) => new C());
+```
+
+This only works for handlers without dependencies. If a handler calls `inject(...)` or has
+constructor parameters, Angular throws `NG0203`, because `inject()` can't be called outside a DI
+context.
+
+**B: make each class injectable.**
+
+```ts
+@Injectable({ providedIn: 'root' })
+export class CardHandler implements PaymentHandler {
+  private readonly http = inject(HttpClient); // dependencies work
+}
+
+// consumer
+handlers = PaymentHandlerImplementations.map((C) => inject(C));
+```
+
+Dependencies work and every handler is a singleton, but every consumer imports the generated
+file, and a test has to override each class one by one.
+
+**C: multi provider (recommended).**
+
+```ts
+// payment-handler.ts
+export interface PaymentHandler { name: string; pay(amount: number): string }
+export const PAYMENT_HANDLERS = new InjectionToken<PaymentHandler[]>('PAYMENT_HANDLERS');
+
+// app.config.ts: the only place that imports the generated file
+import { PaymentHandlerImplementations } from './generated/registry';
+providers: [
+  ...PaymentHandlerImplementations.map((useClass) => ({ provide: PAYMENT_HANDLERS, useClass, multi: true })),
+]
+
+// anywhere: the equivalent of Spring's List<PaymentHandler>
+private readonly handlers = inject(PAYMENT_HANDLERS);
+```
+
+`multi: true` tells Angular to add each provider to the ones already registered under that
+token, and to inject them all together as an array. Without it, each registration replaces the
+previous one, and only the last handler is left.
+
+- Consumers only know the token and the interface, never the generated file.
+- Tests replace the whole list in one line:
+  `providers: [{ provide: PAYMENT_HANDLERS, useValue: [fakeHandler] }]`.
+- Mark implementations with `@Injectable()` so they can use DI themselves.
+- One gotcha: if a class is also `providedIn: 'root'`, `useClass` creates a **second** instance.
+  Use `useExisting` instead of `useClass` to put the root singleton into the list.
+
+**Which one to use:**
+
+| Your handlers…                                                              | Use             |
+|-----------------------------------------------------------------------------|-----------------|
+| have no dependencies, and you don't need to replace them in tests           | A: `new`        |
+| need DI and have a single consumer                                          | B: `inject(C)`  |
+| need DI, have several consumers, or should be easy to fake in tests         | C: multi provider |
 
 **In CI:** `prebuild` only runs through `npm run build`. If your pipeline calls `ng build`
 directly, run `npm run generate` first. If you commit the generated file, add
