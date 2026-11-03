@@ -14,7 +14,7 @@ const { values: args } = parseArgs({
   options: {
     project: { type: 'string', default: 'tsconfig.json' },
     src: { type: 'string', default: 'src' },
-    out: { type: 'string', default: 'src/generated/registry.ts' },
+    out: { type: 'string', default: 'src/generated/implscan-registry.ts' },
     target: { type: 'string', default: 'plain' },
     'dry-run': { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
@@ -23,10 +23,12 @@ const { values: args } = parseArgs({
 if (args.help) {
   console.log(`Usage: ts-implscan [options]
 
-  --project <file>   tsconfig to read compiler options from   (default: tsconfig.json)
-  --src <dir>        folder to scan                           (default: src)
-  --out <file>       file to generate                         (default: src/generated/registry.ts)
-  --target <target>  plain | angular                          (default: plain)
+  --project <file>   tsconfig to read compiler options from
+                     (default: tsconfig.json)
+  --src <dir>        folder to scan (default: src)
+  --out <file>       file to generate
+                     (default: src/generated/implscan-registry.ts)
+  --target <target>  plain | angular (default: plain)
   --dry-run          print the result instead of writing it
   -h, --help         show this help`);
   process.exit(0);

@@ -27,7 +27,7 @@ export class Hello implements Greeter { greet() { return 'hello'; } }
 TS
 
 npx ts-implscan --target angular
-out=src/generated/registry.ts
+out=src/generated/implscan-registry.ts
 grep -q "import { Hello } from '../hello';" "$out"
 grep -q "export const GREETER_LIST = new InjectionToken<Greeter\[\]>" "$out"
 grep -q "{ provide: GREETER_LIST, useClass: Hello, multi: true }" "$out"

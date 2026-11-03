@@ -1,4 +1,4 @@
-import { NotifierImplementations, PaymentHandlerImplementations } from './generated/registry.ts';
+import { NotifierImplementations, PaymentHandlerImplementations } from './generated/implscan-registry.ts';
 import { PaymentService } from './payment/payment-service.ts';
 
 const service = new PaymentService(PaymentHandlerImplementations.map((Impl) => new Impl()));
