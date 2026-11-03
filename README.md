@@ -270,7 +270,7 @@ injector in Node. The published package only depends on `ts-morph`.
 
 ### Releasing
 
-Releases are published to npm by `.github/workflows/release.yml`, using npm
+Releases are uploaded to npm by `.github/workflows/release.yml`, using npm
 [trusted publishing](https://docs.npmjs.com/trusted-publishers). It doesn't need an npm token.
 
 ```sh
@@ -280,7 +280,13 @@ gh release create v0.2.0 --generate-notes   # or click "Publish release" on GitH
 ```
 
 Publishing the GitHub release starts the workflow. It checks that the tag matches
-`package.json`, type-checks, runs the package smoke test and publishes.
+`package.json`, type-checks, runs the package smoke test and **stages** the version on npm.
+A staged version isn't public until a maintainer approves it with 2FA:
+
+```sh
+npm stage list @thomasrepnik/ts-implscan   # shows the stage id
+npm stage approve <stage-id>
+```
 
 ## License
 

@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes to npm when a GitHub Release is published. Authenticates through
+# Stages a release on npm when a GitHub Release is published. Authenticates through
 # npm trusted publishing (OIDC), so no npm token is stored in this repository.
 on:
   release:
@@ -44,6 +44,8 @@ jobs:
             echo "published=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish to npm
+      # The trusted publisher only allows staged publishing: the version is uploaded
+      # but stays private until it's approved with `npm stage approve <id>` (2FA).
+      - name: Stage the release on npm
         if: steps.npm.outputs.published != 'true'
-        run: npm publish
+        run: npm stage publish
