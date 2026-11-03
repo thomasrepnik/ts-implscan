@@ -1,4 +1,4 @@
-import type { ImplScan } from '../implscan.ts';
+import type { ImplScan } from '../../src/index.ts';
 
 export interface PaymentHandler extends ImplScan {
   name: string;

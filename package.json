@@ -1,22 +1,68 @@
 {
-  "name": "ts-implscan",
-  "private": true,
+  "name": "@thomasrepnik/ts-implscan",
+  "version": "0.1.0",
+  "description": "Spring-style List<A> injection for TypeScript: find every class implementing a marked interface and generate a typed registry, plus Angular InjectionTokens and providers.",
+  "keywords": [
+    "typescript",
+    "dependency-injection",
+    "angular",
+    "multi-provider",
+    "injection-token",
+    "code-generation",
+    "ts-morph",
+    "spring",
+    "component-scan"
+  ],
+  "homepage": "https://github.com/thomasrepnik/ts-implscan#readme",
+  "bugs": {
+    "url": "https://github.com/thomasrepnik/ts-implscan/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thomasrepnik/ts-implscan.git"
+  },
+  "license": "MIT",
+  "author": "Thomas Repnik",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ts-implscan": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "generate": "node scripts/generate-registry.ts && node scripts/generate-registry.ts --target angular --out src/generated/registry.angular.ts",
-    "generate:dry": "node scripts/generate-registry.ts --dry-run",
-    "generate:dry:angular": "node scripts/generate-registry.ts --target angular --dry-run",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "generate": "node src/cli.ts --src example --out example/generated/registry.ts && node src/cli.ts --src example --target angular --out example/generated/registry.angular.ts",
+    "generate:dry": "node src/cli.ts --src example --dry-run",
+    "generate:dry:angular": "node src/cli.ts --src example --target angular --dry-run",
     "prestart": "npm run generate",
-    "start": "node src/main.ts",
+    "start": "node example/main.ts",
     "prestart:angular": "npm run generate",
-    "start:angular": "node src/main-angular.ts",
-    "typecheck": "tsc --noEmit"
+    "start:angular": "node example/main-angular.ts",
+    "test:package": "bash scripts/smoke-test.sh"
+  },
+  "dependencies": {
+    "ts-morph": "^28.0.0"
   },
   "devDependencies": {
     "@angular/core": "^22.2.4",
     "@types/node": "^26.6.6",
     "rxjs": "^7.8.2",
-    "ts-morph": "^28.0.0",
     "typescript": "^7.0.2"
   }
 }

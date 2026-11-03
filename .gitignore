@@ -2,3 +2,4 @@ node_modules/
 .claude/
 openspec/
 .DS_Store
+dist/
