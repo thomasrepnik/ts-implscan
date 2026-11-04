@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { of } from 'rxjs';
-import { PaymentHandlerDispatcher } from './generated/implscan-registry.ts';
+import { PaymentHandlerDispatcher, ReceiptFormatterDispatcher } from './generated/implscan-registry.ts';
 import type { PaymentContext } from './payment/payment-context.ts';
 import type { PaymentHandler } from './payment/payment-handler.ts';
 
@@ -78,4 +78,13 @@ test('a circular context still yields the No applicable error', () => {
   ctx.self = ctx;
   const d = new PaymentHandlerDispatcher([], () => ctx);
   assert.throws(() => d.pay(1), /No applicable implementation for context=\[object Object\]/);
+});
+
+test('a context-free dispatcher forwards without a context and reports errors without one', () => {
+  const d = new ReceiptFormatterDispatcher([{ isApplicableTo: () => true, getPriority: () => 0, format: (lines) => lines.join('|') }]);
+  assert.equal(d.format(['a', 'b']), 'a|b');
+  assert.throws(
+    () => new ReceiptFormatterDispatcher([]).format([]),
+    /^Error: \[ReceiptFormatterDispatcher\] No applicable implementation\. Available=$/,
+  );
 });
