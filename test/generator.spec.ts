@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Project, ScriptTarget } from 'ts-morph';
-import { analyzeDispatcher, type DispatcherAnalysis, DISPATCH_MARKER, TypeImports } from '../src/dispatcher.ts';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import {
+  analyzeDispatcher,
+  type DispatcherAnalysis,
+  type DispatcherModel,
+  DISPATCH_MARKER,
+  RESOLVE_DELEGATE_SOURCE,
+  renderDispatcher,
+  TypeImports,
+} from '../src/dispatcher.ts';
 
 const MARKER_FILE = `export interface ImplScan {}
 export interface Dispatchable<T> extends ImplScan { isApplicableTo(context: T): boolean; getPriority(): number; }`;
@@ -153,4 +165,102 @@ test('rejects an import that collides with a reserved local name', () => {
   assert.equal(r.ok, false);
   if (r.ok) return;
   assert.match(r.reason, /Card/);
+});
+
+function renderModel(): DispatcherModel {
+  const p = project({
+    '/src/h.ts': `import type { Dispatchable } from './marker';
+export interface Ctx { m: string }
+export interface H extends Dispatchable<Ctx> {
+  name: string;
+  readonly id: number;
+  pay(amount: number): string;
+  log(...parts: string[]): void;
+}`,
+  });
+  const r = analyze(p, '/src/h.ts', 'H');
+  assert.equal(r.ok, true, JSON.stringify(r));
+  if (!r.ok) throw new Error('unreachable');
+  return r.model;
+}
+
+test('renders the angular dispatcher', () => {
+  assert.equal(
+    renderDispatcher(renderModel(), 'angular', { list: 'H_LIST', context: 'H_CONTEXT' }).join('\n'),
+    `export class HDispatcher implements H {
+  private readonly implementations = inject(H_LIST);
+  private readonly context = inject(H_CONTEXT);
+
+  private get delegate(): H {
+    return resolveDelegate('HDispatcher', this.implementations, this.context());
+  }
+
+  isApplicableTo(context: Ctx): boolean {
+    return this.delegate.isApplicableTo(context);
+  }
+
+  getPriority(): number {
+    return this.delegate.getPriority();
+  }
+
+  get name(): string {
+    return this.delegate.name;
+  }
+
+  set name(value: string) {
+    this.delegate.name = value;
+  }
+
+  get id(): number {
+    return this.delegate.id;
+  }
+
+  pay(amount: number): string {
+    return this.delegate.pay(amount);
+  }
+
+  log(...parts: string[]): void {
+    this.delegate.log(...parts);
+  }
+}`,
+  );
+});
+
+test('renders the plain dispatcher with an explicit constructor', () => {
+  const lines = renderDispatcher(renderModel(), 'plain');
+  assert.deepEqual(lines.slice(0, 9), [
+    'export class HDispatcher implements H {',
+    '  private readonly implementations: H[];',
+    '  private readonly context: () => Ctx;',
+    '',
+    '  constructor(implementations: H[], context: () => Ctx) {',
+    '    this.implementations = implementations;',
+    '    this.context = context;',
+    '  }',
+    '',
+  ]);
+  assert.ok(!lines.join('\n').includes('inject('));
+});
+
+test('resolveDelegate source applies the selection rules', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'implscan-'));
+  const file = path.join(dir, 'resolve.ts');
+  writeFileSync(file, `${RESOLVE_DELEGATE_SOURCE.join('\n')}\nexport { resolveDelegate };\n`);
+  const { resolveDelegate } = (await import(pathToFileURL(file).href)) as {
+    resolveDelegate: <I>(owner: string, implementations: I[], context: unknown) => I;
+  };
+  const impl = (name: string, applicable: boolean, priority: number) => {
+    const cls = { [name]: class { isApplicableTo() { return applicable; } getPriority() { return priority; } } }[name]!;
+    return new cls();
+  };
+
+  assert.throws(() => resolveDelegate('X', [], { m: 1 }), /\[X\] No applicable implementation for context=\{"m":1\}\. Available=$/);
+  const only = impl('Only', true, 0);
+  assert.equal(resolveDelegate('X', [only, impl('Other', false, 9)], {}), only);
+  const high = impl('High', true, 2);
+  assert.equal(resolveDelegate('X', [impl('Low', true, 1), high], {}), high);
+  assert.throws(() => resolveDelegate('X', [impl('A', true, 1), impl('B', true, 1)], {}), /Ambiguous implementations.*HighestPriority=1.*HighestCandidates=A\(priority=1\), B\(priority=1\)/);
+  const circular: { self?: unknown } = {};
+  circular.self = circular;
+  assert.throws(() => resolveDelegate('X', [], circular), /context=\[object Object\]/);
 });

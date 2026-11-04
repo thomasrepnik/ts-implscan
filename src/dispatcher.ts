@@ -229,3 +229,72 @@ function specifierOf(imp: ImportDeclaration, importPath: (file: string) => strin
   if (!target) throw new Error(`cannot resolve import '${imp.getModuleSpecifierValue()}' in ${imp.getSourceFile().getFilePath()}`);
   return importPath(target.getFilePath());
 }
+
+/** Emitted once per generated file: picks the implementation a dispatcher forwards to. */
+export const RESOLVE_DELEGATE_SOURCE = `function resolveDelegate<T, I extends { isApplicableTo(context: T): boolean; getPriority(): number }>(owner: string, implementations: I[], context: T): I {
+  const describe = (candidates: I[]) => candidates.map((c) => \`\${c.constructor?.name ?? 'UnknownImplementation'}(priority=\${c.getPriority()})\`).join(', ');
+  const applicable = implementations.filter((candidate) => candidate.isApplicableTo(context));
+  if (applicable.length === 0) {
+    throw new Error(\`[\${owner}] No applicable implementation for context=\${stringify(context)}. Available=\${describe(implementations)}\`);
+  }
+  if (applicable.length === 1) return applicable[0]!;
+  const maxPriority = Math.max(...applicable.map((candidate) => candidate.getPriority()));
+  const topCandidates = applicable.filter((candidate) => candidate.getPriority() === maxPriority);
+  if (topCandidates.length === 1) return topCandidates[0]!;
+  throw new Error(\`[\${owner}] Ambiguous implementations for context=\${stringify(context)}. HighestPriority=\${maxPriority}. Applicable=\${describe(applicable)}. HighestCandidates=\${describe(topCandidates)}\`);
+}
+
+function stringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}`.split('\n');
+
+/** The dispatcher class, as lines. `tokens` are the Angular injection tokens; the plain target takes both via the constructor. */
+export function renderDispatcher(
+  model: DispatcherModel,
+  target: 'plain' | 'angular',
+  tokens?: { list: string; context: string },
+): string[] {
+  const { interfaceName, className, contextType } = model;
+  const head =
+    target === 'angular' && tokens
+      ? [
+          `  private readonly implementations = inject(${tokens.list});`,
+          `  private readonly context = inject(${tokens.context});`,
+        ]
+      : [
+          `  private readonly implementations: ${interfaceName}[];`,
+          `  private readonly context: () => ${contextType};`,
+          '',
+          `  constructor(implementations: ${interfaceName}[], context: () => ${contextType}) {`,
+          '    this.implementations = implementations;',
+          '    this.context = context;',
+          '  }',
+        ];
+
+  const blocks: string[][] = [
+    [
+      `  private get delegate(): ${interfaceName} {`,
+      `    return resolveDelegate('${className}', this.implementations, this.context());`,
+      '  }',
+    ],
+    [`  isApplicableTo(context: ${contextType}): boolean {`, '    return this.delegate.isApplicableTo(context);', '  }'],
+    ['  getPriority(): number {', '    return this.delegate.getPriority();', '  }'],
+  ];
+  for (const member of model.members) {
+    if (member.kind === 'method') {
+      const call = `this.delegate.${member.name}(${member.args});`;
+      blocks.push([`  ${member.signature} {`, `    ${member.returnsVoid ? '' : 'return '}${call}`, '  }']);
+    } else {
+      blocks.push([`  get ${member.name}(): ${member.signature} {`, `    return this.delegate.${member.name};`, '  }']);
+      if (!member.readonly) {
+        blocks.push([`  set ${member.name}(value: ${member.signature}) {`, `    this.delegate.${member.name} = value;`, '  }']);
+      }
+    }
+  }
+
+  return [`export class ${className} implements ${interfaceName} {`, ...head, ...blocks.flatMap((b) => ['', ...b]), '}'];
+}
