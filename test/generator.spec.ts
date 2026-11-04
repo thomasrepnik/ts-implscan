@@ -131,7 +131,6 @@ test('TypeImports merges and detects collisions', () => {
 });
 
 const unsupported: Array<[string, string, RegExp]> = [
-  ['missing type argument', `export interface H extends Dispatchable { run(): void }`, /type argument/],
   ['overload', `export interface H extends Dispatchable<Ctx> { pay(a: number): string; pay(a: string): string }`, /overloaded.*pay/],
   ['optional method', `export interface H extends Dispatchable<Ctx> { pay?(): string }`, /optional.*pay/],
   ['optional property', `export interface H extends Dispatchable<Ctx> { name?: string }`, /optional.*name/],
@@ -264,4 +263,76 @@ test('resolveDelegate source applies the selection rules', async () => {
   const circular: { self?: unknown } = {};
   circular.self = circular;
   assert.throws(() => resolveDelegate('X', [], circular), /context=\[object Object\]/);
+});
+
+function contextFreeModel(extendsClause = 'Dispatchable'): DispatcherModel {
+  const p = project({
+    '/src/h.ts': `import type { Dispatchable } from './marker';
+export interface H extends ${extendsClause} {
+  format(lines: string[]): string;
+}`,
+  });
+  const r = analyze(p, '/src/h.ts', 'H');
+  assert.equal(r.ok, true, JSON.stringify(r));
+  if (!r.ok) throw new Error('unreachable');
+  return r.model;
+}
+
+test('no type argument (or void) means a context-free dispatcher', () => {
+  assert.equal(contextFreeModel().contextType, undefined);
+  assert.equal(contextFreeModel('Dispatchable<void>').contextType, undefined);
+  assert.deepEqual(
+    contextFreeModel().members.map((m) => m.name),
+    ['format'],
+  );
+});
+
+test('renders the context-free angular dispatcher without context field or argument', () => {
+  assert.equal(
+    renderDispatcher(contextFreeModel(), 'angular', { list: 'H_LIST' }).join('\n'),
+    `export class HDispatcher implements H {
+  private readonly implementations = inject(H_LIST);
+
+  private get delegate(): H {
+    return resolveDelegate('HDispatcher', this.implementations);
+  }
+
+  isApplicableTo(): boolean {
+    return this.delegate.isApplicableTo();
+  }
+
+  getPriority(): number {
+    return this.delegate.getPriority();
+  }
+
+  format(lines: string[]): string {
+    return this.delegate.format(lines);
+  }
+}`,
+  );
+});
+
+test('renders the context-free plain dispatcher with a one-argument constructor', () => {
+  assert.deepEqual(renderDispatcher(contextFreeModel(), 'plain').slice(0, 6), [
+    'export class HDispatcher implements H {',
+    '  private readonly implementations: H[];',
+    '',
+    '  constructor(implementations: H[]) {',
+    '    this.implementations = implementations;',
+    '  }',
+  ]);
+});
+
+test('resolveDelegate without a context leaves it out of the errors', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'implscan-'));
+  const file = path.join(dir, 'resolve.ts');
+  writeFileSync(file, `${RESOLVE_DELEGATE_SOURCE.join('\n')}\nexport { resolveDelegate };\n`);
+  const { resolveDelegate } = (await import(pathToFileURL(file).href)) as {
+    resolveDelegate: <I>(owner: string, implementations: I[], context?: unknown) => I;
+  };
+  const impl = (applicable: boolean, priority: number) => ({ isApplicableTo: () => applicable, getPriority: () => priority });
+  assert.throws(() => resolveDelegate('X', [impl(false, 0)]), /^Error: \[X\] No applicable implementation\. Available=Object\(priority=0\)$/);
+  assert.throws(() => resolveDelegate('X', [impl(true, 1), impl(true, 1)]), /\[X\] Ambiguous implementations\. HighestPriority=1\./);
+  const only = impl(true, 0);
+  assert.equal(resolveDelegate('X', [only]), only);
 });
