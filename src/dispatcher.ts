@@ -11,6 +11,8 @@ import {
 } from 'ts-morph';
 
 export const DISPATCH_MARKER = 'Dispatchable';
+// fields and the getter of the generated class, which an interface member may not shadow
+const RESERVED_MEMBERS = new Set(['implementations', 'context', 'delegate']);
 
 /** Type-only imports of a generated file, keyed by local name so that a name is never bound twice. */
 export class TypeImports {
@@ -113,14 +115,28 @@ export function analyzeDispatcher(
 
   const typeArg = marker.getTypeArguments()[0];
   if (!typeArg) return fail(`${DISPATCH_MARKER} needs a type argument`);
+  if (iface.getTypeParameters().length) return fail('generic interface');
+  const type = iface.getType();
+  if (type.getCallSignatures().length) return fail('call signature');
+  if (type.getStringIndexType() || type.getNumberIndexType()) return fail('index signature');
   let error = imports.add(importPath(iface.getSourceFile().getFilePath()), interfaceName) ?? collect(typeArg);
   if (error) return fail(error);
 
   const members: DispatcherMember[] = [];
-  for (const symbol of iface.getType().getProperties()) {
-    const decl = symbol.getDeclarations()[0]!;
+  for (const symbol of type.getProperties()) {
+    const name = symbol.getName();
+    const declarations = symbol.getDeclarations();
+    const decl = declarations[0]!;
     const owner = decl.getParent();
-    if (Node.isInterfaceDeclaration(owner) && owner.getName() === DISPATCH_MARKER) continue;
+    if (!Node.isInterfaceDeclaration(owner)) return fail(`member ${name} declared outside an interface`);
+    if (owner.getName() === DISPATCH_MARKER) continue;
+    if (owner.getTypeParameters().length) return fail(`member ${name} inherited from generic base ${owner.getName()}`);
+    if (declarations.length > 1) return fail(`overloaded method ${name}`);
+    if (Node.isGetAccessorDeclaration(decl) || Node.isSetAccessorDeclaration(decl)) return fail(`accessor ${name}`);
+    if (!Node.isMethodSignature(decl) && !Node.isPropertySignature(decl)) return fail(`unsupported member ${name}`);
+    if (!Node.isIdentifier(decl.getNameNode())) return fail(`member name '${name}' is not a plain identifier`);
+    if (decl.hasQuestionToken()) return fail(`optional member ${name}`);
+    if (RESERVED_MEMBERS.has(name)) return fail(`reserved member name ${name}`);
 
     if (Node.isMethodSignature(decl)) {
       const typeParams = decl.getTypeParameters();
@@ -128,9 +144,13 @@ export function analyzeDispatcher(
       const returnNode = decl.getReturnTypeNode();
       const generics = typeParams.length ? `<${typeParams.map((t) => t.getText()).join(', ')}>` : '';
       const returnText = returnNode?.getText() ?? decl.getReturnType().getText(decl);
+      if (params.some((p) => !Node.isIdentifier(p.getNameNode()))) return fail(`destructured parameter in ${name}`);
       for (const node of [...typeParams, ...params.map((p) => p.getTypeNode()), returnNode]) {
+        if (node && (node.getKind() === SyntaxKind.ThisType || node.getFirstDescendantByKind(SyntaxKind.ThisType))) {
+          return fail(`this type in the signature of ${name}`);
+        }
         error = collect(node);
-        if (error) return fail(`${error} (used by ${decl.getName()})`);
+        if (error) return fail(`${error} (used by ${name})`);
       }
       members.push({
         kind: 'method',
@@ -143,7 +163,7 @@ export function analyzeDispatcher(
     } else if (Node.isPropertySignature(decl)) {
       const typeNode = decl.getTypeNode();
       error = collect(typeNode);
-      if (error) return fail(`${error} (used by ${decl.getName()})`);
+      if (error) return fail(`${error} (used by ${name})`);
       members.push({
         kind: 'property',
         name: decl.getName(),
@@ -195,7 +215,10 @@ function importFor(id: Identifier, imports: TypeImports, importPath: (file: stri
   if (declarations.some(Node.isTypeParameterDeclaration)) return undefined;
   // 3. declared in the declaring file itself
   const local = declarations.find((d) => d.getSourceFile() === file && Node.isSourceFile(d.getParent()));
-  if (local) return imports.add(importPath(file.getFilePath()), text);
+  if (local) {
+    if (!Node.isExportable(local) || !local.isExported()) return `type ${text} is not exported`;
+    return imports.add(importPath(file.getFilePath()), text);
+  }
   // 4. globals and ambient declarations
   return undefined;
 }

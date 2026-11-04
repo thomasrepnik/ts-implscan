@@ -117,3 +117,40 @@ test('TypeImports merges and detects collisions', () => {
   assert.match(a.merge(b)!, /Foo/);
   assert.deepEqual(a.render(), [`import type { Foo } from './x';`]);
 });
+
+const unsupported: Array<[string, string, RegExp]> = [
+  ['missing type argument', `export interface H extends Dispatchable { run(): void }`, /type argument/],
+  ['overload', `export interface H extends Dispatchable<Ctx> { pay(a: number): string; pay(a: string): string }`, /overloaded.*pay/],
+  ['optional method', `export interface H extends Dispatchable<Ctx> { pay?(): string }`, /optional.*pay/],
+  ['optional property', `export interface H extends Dispatchable<Ctx> { name?: string }`, /optional.*name/],
+  ['destructured parameter', `export interface H extends Dispatchable<Ctx> { pay({ a }: { a: number }): void }`, /destructured.*pay/],
+  ['accessor', `export interface H extends Dispatchable<Ctx> { get name(): string }`, /accessor.*name/],
+  ['this return type', `export interface H extends Dispatchable<Ctx> { self(): this }`, /this.*self/],
+  ['call signature', `export interface H extends Dispatchable<Ctx> { (x: number): void }`, /call signature/],
+  ['index signature', `export interface H extends Dispatchable<Ctx> { [key: string]: unknown }`, /index signature/],
+  ['generic interface', `export interface H<T> extends Dispatchable<Ctx> { get(): T }`, /generic/],
+  ['generic base', `export interface Base<T> { get(): T }\nexport interface H extends Base<string>, Dispatchable<Ctx> {}`, /generic base.*Base/],
+  ['non-exported type', `interface Hidden {}\nexport interface H extends Dispatchable<Ctx> { get(): Hidden }`, /Hidden.*not exported/],
+  ['reserved member name', `export interface H extends Dispatchable<Ctx> { delegate: string }`, /reserved.*delegate/],
+  ['non-identifier member name', `export interface H extends Dispatchable<Ctx> { 'pay-now'(): void }`, /name.*pay-now/],
+];
+for (const [title, body, reason] of unsupported) {
+  test(`rejects ${title}`, () => {
+    const p = project({ '/src/h.ts': `import type { Dispatchable } from './marker';\nexport interface Ctx {}\n${body}` });
+    const r = analyze(p, '/src/h.ts', 'H');
+    assert.equal(r.ok, false, JSON.stringify(r));
+    if (r.ok) return;
+    assert.match(r.reason, reason);
+  });
+}
+
+test('rejects an import that collides with a reserved local name', () => {
+  const p = project({
+    '/src/h.ts': `import type { Dispatchable } from './marker';\nimport type { Card } from './card';\nexport interface Ctx {}\nexport interface H extends Dispatchable<Ctx> { card(): Card }`,
+    '/src/card.ts': `export interface Card {}`,
+  });
+  const r = analyze(p, '/src/h.ts', 'H', ['Card']);
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.match(r.reason, /Card/);
+});
