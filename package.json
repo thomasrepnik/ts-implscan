@@ -47,6 +47,7 @@
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
+    "test": "node --test test/generator.spec.ts example/dispatcher.spec.ts",
     "generate": "node src/cli.ts --src example --out example/generated/implscan-registry.ts && node src/cli.ts --src example --target angular --out example/generated/implscan-registry.angular.ts",
     "generate:dry": "node src/cli.ts --src example --dry-run",
     "generate:dry:angular": "node src/cli.ts --src example --target angular --dry-run",
