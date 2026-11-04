@@ -109,7 +109,7 @@ export function analyzeDispatcher(
   reserved: Iterable<string>,
 ): DispatcherAnalysis {
   const interfaceName = iface.getName();
-  const fail = (reason: string): DispatcherAnalysis => ({ ok: false, reason: `${interfaceName}: ${reason}` });
+  const fail = (reason: string): DispatcherAnalysis => ({ ok: false, reason });
   const imports = new TypeImports(reserved);
   const collect = (node: Node | undefined) => (node ? collectImports(node, imports, importPath) : undefined);
 
