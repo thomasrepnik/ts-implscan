@@ -3,10 +3,21 @@
 [![npm](https://img.shields.io/npm/v/@thomasrepnik/ts-implscan)](https://www.npmjs.com/package/@thomasrepnik/ts-implscan)
 [![CI](https://github.com/thomasrepnik/ts-implscan/actions/workflows/ci.yml/badge.svg)](https://github.com/thomasrepnik/ts-implscan/actions/workflows/ci.yml)
 
-**Spring-style `List<PaymentHandler>` injection for TypeScript.** Mark an interface with `ImplScan`, and a
-build-time generator collects every class that implements it into a typed registry. For Angular,
-it also generates the `InjectionToken`s and providers. Mark it with `Dispatchable` instead, and
-you also get a generated dispatcher that forwards each call to the one applicable implementation.
+**Spring-style `List<PaymentHandler>` injection for TypeScript, plus a generated dispatcher that
+picks the right one.** Mark an interface, and a build-time generator collects every class that
+implements it into a typed registry. For Angular it also generates the `InjectionToken`s and
+providers. Mark it as dispatchable, and you get a class that forwards each call to the one
+applicable implementation.
+
+- [Installation](#installation)
+- [The three markers](#the-three-markers)
+- [Collect all implementations](#collect-all-implementations)
+- [Dispatch to one implementation](#dispatch-to-one-implementation)
+- [Good to know](#good-to-know)
+- [Limits](#limits)
+- [Why](#why)
+- [CLI options](#cli-options)
+- [Development](#development)
 
 ## Installation
 
@@ -18,18 +29,29 @@ The package contains two things:
 
 | What | How you use it |
 |---|---|
-| The marker interfaces `ImplScan`, `Dispatchable`, `DispatchContextProvider` | `import type { ImplScan } from '@thomasrepnik/ts-implscan'` |
+| The marker interfaces (`ImplScan`, `Dispatchable`, `DispatchContextProvider`) | `import type { ImplScan } from '@thomasrepnik/ts-implscan'` |
 | The `ts-implscan` CLI (the generator) | `npx ts-implscan`, or in a `package.json` script |
 
 It's a dev dependency because it only runs at build time. The marker imports are type-only and
 disappear when compiled, so nothing from this package ends up in your production bundle.
 You need Node 22 or newer.
 
-## Quick start
+## The three markers
+
+| Your interface or class | What the generator produces |
+|---|---|
+| `interface X extends ImplScan` | `XImplementations` array; Angular: `X_LIST` token and multi providers |
+| `interface X extends Dispatchable<Ctx>` | the above, plus `XDispatcher` and (Angular) the `X_CONTEXT` token |
+| `interface X extends Dispatchable` | the above without a context: `XDispatcher` only |
+| `class P implements DispatchContextProvider<Ctx>` | Angular: `provideImplscan()` builds `X_CONTEXT` from `P` for every `X` using `Ctx` |
+
+Everything lands in one generated file, and in Angular one `provideImplscan()` registers it all.
+
+## Collect all implementations
+
+This is the equivalent of Spring's `List<PaymentHandler>`.
 
 ### 1. Mark an interface
-
-Extend `ImplScan` to tell the generator to collect the interface's implementations:
 
 ```ts
 // payment-handler.ts
@@ -60,9 +82,7 @@ export class PaypalHandler implements PaymentHandler { ... }
 
 ### 3. Generate the registry and use it
 
-Pick the variant for your project.
-
-#### With Angular
+#### Angular
 
 Add the generator to your scripts, so it runs before every `ng serve` and `ng build`:
 
@@ -74,7 +94,7 @@ Add the generator to your scripts, so it runs before every `ng serve` and `ng bu
 }
 ```
 
-Register all implementations once:
+Register all implementations once, then inject the list anywhere:
 
 ```ts
 // app.config.ts
@@ -83,11 +103,8 @@ import { provideImplscan } from './generated/implscan-registry';
 export const appConfig: ApplicationConfig = {
   providers: [provideImplscan()],
 };
-```
 
-Inject the list anywhere. This is the equivalent of Spring's `List<PaymentHandler>`:
-
-```ts
+// payment.service.ts
 import { PAYMENT_HANDLER_LIST } from './generated/implscan-registry';
 
 @Injectable({ providedIn: 'root' })
@@ -129,9 +146,6 @@ export function provideImplscan(): Provider[] {
 There is one token per marked interface, and `provideImplscan()` registers all of them.
 </details>
 
-The [example](example/main-angular.ts) in this repository resolves the generated providers
-through Angular's real injector (`npm run start:angular`).
-
 #### Without Angular
 
 The default target generates plain arrays of classes, with no framework dependency. It works for
@@ -172,16 +186,20 @@ export const PaymentHandlerImplementations: Array<new (...args: any[]) => Paymen
 ```
 </details>
 
-The [example](example/main.ts) in this repository does exactly this (`npm start`).
-
 **That's it.** A new implementation is picked up the next time the generator runs. A new
-interface only needs `extends ImplScan`, and with Angular its token is generated too.
+interface only needs `extends ImplScan`, and with Angular its token is generated too. The
+[example](example/) in this repository runs both variants (`npm start`, `npm run start:angular`).
 
-## Dispatching to one implementation
+## Dispatch to one implementation
 
 Often you don't want *all* implementations but *the right one*: the payment handler for the
-selected method, the exporter for the chosen format. Extend `Dispatchable<TContext>` instead of
-`ImplScan`, and let every implementation say when it applies:
+selected method, the exporter for the chosen format. Instead of injecting the list and choosing
+by hand, let the generator write the dispatcher.
+
+### 1. Mark the interface as dispatchable
+
+Replace `ImplScan` with `Dispatchable<TContext>`, where `TContext` describes what the choice
+depends on:
 
 ```ts
 // payment-context.ts
@@ -196,7 +214,13 @@ export interface PaymentHandler extends Dispatchable<PaymentContext> {
   name: string;
   pay(amount: number): string;
 }
+```
 
+`Dispatchable` extends `ImplScan`, so the list and its token are still generated.
+
+### 2. Let every implementation say when it applies
+
+```ts
 // card-handler.ts
 export class CardHandler implements PaymentHandler {
   name = 'card';
@@ -212,80 +236,71 @@ export class CardHandler implements PaymentHandler {
 }
 ```
 
-The generator still writes the list and its token, and additionally a `PaymentHandlerDispatcher`
-class that implements `PaymentHandler` and forwards every member to the applicable implementation.
+### 3. Supply the context
 
-#### With Angular
+The generator knows the context *type*, but not where its values live. Pick one of three ways.
 
-`provideImplscan()` registers the dispatcher, and `app.config.ts` needs nothing else:
+**A context provider class next to the interface (recommended).** It implements
+`DispatchContextProvider<PaymentContext>`, the scan finds it like an implementation, and in
+Angular `provideImplscan()` builds the `PAYMENT_HANDLER_CONTEXT` token from it. Nothing is added
+to `app.config.ts`. `get()` runs on every dispatcher call, so it may read a signal:
 
 ```ts
-// app.config.ts
-providers: [provideImplscan()],
+// payment-context.provider.ts
+import type { DispatchContextProvider } from '@thomasrepnik/ts-implscan';
 
-// anywhere
+export class PaymentContextProvider implements DispatchContextProvider<PaymentContext> {
+  private readonly settings = inject(PaymentSettings);
+  get(): PaymentContext {
+    return { method: this.settings.method() };
+  }
+}
+```
+
+One provider serves every interface that uses the same context type.
+
+**No context at all.** Extend `Dispatchable` without a type argument. Then `isApplicableTo()`
+takes no parameter, no token is generated, and each implementation decides from what it injects:
+
+```ts
+export interface ReceiptFormatter extends Dispatchable {
+  format(lines: string[]): string;
+}
+
+export class MarkdownFormatter implements ReceiptFormatter {
+  private readonly settings = inject(ReceiptSettings);
+  isApplicableTo() {
+    return this.settings.format() === 'md';
+  }
+  getPriority() {
+    return 10;
+  }
+  format(lines: string[]) {
+    return lines.map((line) => `- ${line}`).join('\n');
+  }
+}
+```
+
+**The token by hand.** Provide `PAYMENT_HANDLER_CONTEXT` with a `() => PaymentContext` (a
+`Signal` qualifies). This overrides a provider class, which is useful in tests or for a component
+or route with its own context. Provide the dispatcher class in the same `providers`, so that it
+sees the local token:
+
+```ts
+providers: [PaymentHandlerDispatcher, { provide: PAYMENT_HANDLER_CONTEXT, useValue: () => ({ method: 'card' }) }],
+```
+
+### 4. Use the dispatcher
+
+Angular: `provideImplscan()` registers it, inject it like any service.
+
+```ts
 private readonly payment = inject(PaymentHandlerDispatcher);
 this.payment.pay(42); // forwarded to CardHandler, PaypalHandler or TwintHandler
 ```
 
-#### Where the context comes from
-
-The generator knows the context *type* but not where its values live. One of three things supplies
-them:
-
-1. **A context provider class** next to the interface (recommended). It implements
-   `DispatchContextProvider<PaymentContext>`, the scan finds it like an implementation, and
-   `provideImplscan()` builds the `PAYMENT_HANDLER_CONTEXT` token from it. `get()` runs on every
-   dispatcher call, so it may read a signal:
-
-   ```ts
-   export class PaymentContextProvider implements DispatchContextProvider<PaymentContext> {
-     private readonly settings = inject(PaymentSettings);
-     get(): PaymentContext {
-       return { method: this.settings.method() };
-     }
-   }
-   ```
-
-   One provider serves every interface that uses the same context type. The type must be a named
-   interface or alias, and two providers for one type produce a warning and no wiring.
-
-2. **No context at all.** Extend `Dispatchable` without a type argument. Then `isApplicableTo()`
-   takes no parameter, no token is generated, and each implementation decides from what it injects:
-
-   ```ts
-   export interface ReceiptFormatter extends Dispatchable {
-     format(lines: string[]): string;
-   }
-
-   export class MarkdownFormatter implements ReceiptFormatter {
-     private readonly settings = inject(ReceiptSettings);
-     isApplicableTo() {
-       return this.settings.format() === 'md';
-     }
-     getPriority() {
-       return 10;
-     }
-     format(lines: string[]) {
-       return lines.map((line) => `- ${line}`).join('\n');
-     }
-   }
-   ```
-
-3. **The token by hand.** A `() => PaymentContext` provider for `PAYMENT_HANDLER_CONTEXT` (a
-   `Signal` qualifies) overrides a provider class, for tests or for a component or route with its
-   own context. In that case provide `PAYMENT_HANDLER_CONTEXT` **and** `PaymentHandlerDispatcher` in
-   the same `providers`; the class has no constructor arguments and no decorator, so the bare class
-   name works:
-
-   ```ts
-   providers: [PaymentHandlerDispatcher, { provide: PAYMENT_HANDLER_CONTEXT, useValue: () => ({ method: 'card' }) }],
-   ```
-
-#### Without Angular
-
-The plain dispatcher takes the implementations and, for a typed context, the context function in
-its constructor:
+Without Angular: the plain dispatcher takes the implementations and, for a typed context, the
+context function in its constructor.
 
 ```ts
 let method: PaymentContext['method'] = 'twint';
@@ -297,7 +312,7 @@ payment.pay(42); // CardHandler: applicable with priority 10, PaypalHandler only
 const receipt = new ReceiptFormatterDispatcher(formatters); // context-free: no second argument
 ```
 
-#### How the delegate is chosen
+### How the delegate is chosen
 
 On **every call**, the dispatcher reads the context and filters the implementations with
 `isApplicableTo(context)`:
@@ -361,18 +376,52 @@ instead of `inject()`.
 
 ## Good to know
 
+Lists:
+
 - **Check what would be collected** without writing anything: `npx ts-implscan --dry-run`.
 - **Replace a whole list in Angular tests** with one provider:
   `providers: [{ provide: PAYMENT_HANDLER_LIST, useValue: [fakeHandler] }]`.
 - **A marked interface without implementations** gives an empty array, and in Angular a
-  `useValue: []` provider, so injecting it doesn't throw. A dispatcher over an empty list throws
-  on its first call.
+  `useValue: []` provider, so injecting it doesn't throw.
+
+Dispatchers:
+
+- **A dispatcher over an empty list** throws on its first call, not when it is created.
 - **The Angular dispatcher comes from DI**, through `provideImplscan()` or by re-providing the
   class. Creating it with `new` fails, because its fields use `inject()`.
+- **Interfaces the generator can't forward** (see [Limits](#limits)) print a warning and still get
+  their list and token, only the dispatcher is skipped.
+
+Workflow:
+
 - **Commit the generated file**, so the IDE and type checks work right after a checkout. Let CI
   catch a forgotten regeneration with `npm run generate && git diff --exit-code`.
 - **In CI**, `prebuild` only runs through `npm run build`. If your pipeline calls `ng build`
   directly, run `npm run generate` first.
+
+## Limits
+
+Collecting:
+
+- Only interfaces that extend `ImplScan` or `Dispatchable` **directly** are collected. The CLI
+  detects the markers by name, so a local `interface ImplScan {}` works too; a local `Dispatchable`
+  must declare the same two members.
+- Only explicit `implements X` clauses count. Classes that only match the interface structurally,
+  and subclasses of an implementing class, are not found.
+- Implementations and context providers must be exported, non-abstract, named-export classes. A
+  non-exported class is skipped with a warning.
+
+Dispatching:
+
+- Some interface shapes get a warning and no dispatcher: overloaded or optional members,
+  destructured parameters, accessors, `this` return types, index or call signatures, generic
+  interfaces, members inherited from a generic base other than `Dispatchable`, signatures using
+  non-exported types, and two imported types sharing one name.
+- A dispatcher forwards property writes through a setter; `readonly` properties get no setter.
+- A `DispatchContextProvider` is matched to interfaces by its context type, which must be a named
+  interface or type alias. Inline object types never match, and two providers for one type produce
+  a warning and no wiring.
+- `isApplicableTo` runs on every dispatcher call; keep it cheap.
 
 ## Why
 
@@ -384,12 +433,14 @@ implements the interface. TypeScript can't do this out of the box, for two reaso
    new implementation that nobody imports doesn't exist at runtime.
 
 DI containers such as Angular, tsyringe or InversifyJS solve this with injection tokens, but
-then you have to register every implementation by hand, and it's easy to forget one.
+then you have to register every implementation by hand, and it's easy to forget one. Choosing
+one implementation adds a second piece of boilerplate: a hand-written dispatcher per interface
+that filters the list and forwards every method.
 
-`ts-implscan` moves the scan to build time. It uses [ts-morph](https://ts-morph.com) and the
-TypeScript type checker to find every exported class that `implements` a marked interface. The
-generated file is ordinary TypeScript, so `tsc` fails if a listed class doesn't actually satisfy
-its interface.
+`ts-implscan` moves both to build time. It uses [ts-morph](https://ts-morph.com) and the
+TypeScript type checker to find every exported class that `implements` a marked interface, and
+copies the interface's signatures into the dispatcher. The generated file is ordinary TypeScript,
+so `tsc` fails if a listed class doesn't actually satisfy its interface.
 
 **Why a marker interface rather than a comment tag like `/** @implscan */`?** The marker is
 checked by the compiler, so a typo doesn't silently drop the interface. Your IDE's "Find usages"
@@ -397,12 +448,12 @@ on `ImplScan` lists every collected interface, and renames are safe. It's the sa
 marker interface such as `Serializable`, and it keeps out the interfaces you implement for other
 reasons, such as Angular's `OnInit`.
 
-## When it's helpful
+### When it's helpful
 
 - **Plugin and strategy patterns**, such as payment providers, exporters, validators, notification
   channels or feature handlers, where the set of implementations keeps growing.
 - **Teams coming from Spring or Java** who want the open/closed principle that `List<PaymentHandler>` injection
-  gives them: adding behaviour means adding a class, not editing a central list.
+  gives them: adding behaviour means adding a class, not editing a central list or a dispatcher.
 - **Angular apps** with many multi-provider tokens, so nobody forgets to register a new
   implementation, or to write the token.
 
@@ -418,9 +469,9 @@ ts-implscan [--project tsconfig.json] [--src src] [--out src/generated/implscan-
 | Option       | Default                              | Meaning                                                  |
 |--------------|--------------------------------------|----------------------------------------------------------|
 | `--project`  | `tsconfig.json`                      | tsconfig to read compiler options from (paths, resolution) |
-| `--src`      | `src`                                | Folder to scan. `*.spec.ts` and `*.d.ts` are skipped.      |
+| `--src`      | `src`                                | Folder to scan. `*.spec.ts`, `*.d.ts` and previously generated files are skipped. |
 | `--out`      | `src/generated/implscan-registry.ts` | File to generate                                         |
-| `--target`   | `plain`                              | `angular` adds an `InjectionToken` per interface and `provideImplscan()` |
+| `--target`   | `plain`                              | `angular` adds the `InjectionToken`s and `provideImplscan()` |
 | `--dry-run`  | off                                  | Print the result to stdout instead of writing it         |
 | `-h, --help` |                                      | Show the help                                            |
 
@@ -428,24 +479,6 @@ The files to scan come from `--src`, not from the tsconfig, because a new implem
 imported anywhere yet. The tsconfig is only read for compiler options. The import extension in
 the generated file follows it too: `.ts` with `allowImportingTsExtensions`, `.js` with `NodeNext`,
 and no extension with `bundler`, which is what Angular uses.
-
-## Limits
-
-- Only interfaces that extend `ImplScan` or `Dispatchable` **directly** are collected. The CLI
-  detects the markers by name, so a local `interface ImplScan {}` works too; a local `Dispatchable`
-  must declare the same two members.
-- Only explicit `implements X` clauses count. Classes that only match the interface structurally,
-  and subclasses of an implementing class, are not found.
-- Implementations must be exported, non-abstract, named-export classes. A non-exported
-  implementation is skipped with a warning.
-- A dispatcher forwards property writes through a setter; `readonly` properties get no setter.
-- Some interface shapes get a warning and no dispatcher (the list and token are still generated):
-  overloaded or optional members, destructured parameters, accessors, `this` return types, index
-  or call signatures, generic interfaces, members inherited from a generic base other than
-  `Dispatchable`, signatures using non-exported types, and two imported types sharing one name.
-- `isApplicableTo` runs on every dispatcher call; keep it cheap.
-- A `DispatchContextProvider` is matched to interfaces by its context type, which must be a named
-  interface or type alias. Inline object types never match.
 
 ## Development
 
@@ -461,7 +494,7 @@ npm run generate:dry:angular   # the same with Angular tokens and providers
 npm start                      # regenerate, then run the example with plain arrays
 npm run start:angular          # regenerate, then resolve everything through Angular's real Injector
 npm run typecheck
-npm test                       # generator tests (in-memory ts-morph projects) and the generated dispatcher
+npm test                       # generator tests (in-memory ts-morph projects), CLI tests and the generated dispatcher
 npm run test:package           # pack, install into an empty project, run the CLI from there
 ```
 
