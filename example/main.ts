@@ -1,4 +1,10 @@
-import { NotifierImplementations, PaymentHandlerDispatcher, PaymentHandlerImplementations } from './generated/implscan-registry.ts';
+import {
+  NotifierImplementations,
+  PaymentHandlerDispatcher,
+  PaymentHandlerImplementations,
+  ReceiptFormatterDispatcher,
+  ReceiptFormatterImplementations,
+} from './generated/implscan-registry.ts';
 import type { PaymentContext } from './payment/payment-context.ts';
 import { PaymentService } from './payment/payment-service.ts';
 
@@ -14,7 +20,10 @@ const payment = new PaymentHandlerDispatcher(handlers, () => ({ method }));
 console.log(payment.pay(42));
 method = 'card'; // CardHandler wins over PaypalHandler by priority
 console.log(payment.pay(42));
-payment.receipt(42).subscribe((line) => console.log(line));
+
+// Context-free dispatcher: the formatters decide themselves (RECEIPT_FORMAT=md picks Markdown)
+const receipt = new ReceiptFormatterDispatcher(ReceiptFormatterImplementations.map((Impl) => new Impl()));
+payment.receipt(42).subscribe((line) => console.log(receipt.format([line])));
 
 for (const notifier of NotifierImplementations.map((Impl) => new Impl())) {
   console.log(notifier.notify('payment done'));

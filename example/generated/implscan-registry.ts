@@ -2,24 +2,28 @@
 import type { Notifier } from '../notification/notifier.ts';
 import type { PaymentContext } from '../payment/payment-context.ts';
 import type { PaymentHandler } from '../payment/payment-handler.ts';
+import type { ReceiptFormatter } from '../receipt/receipt-formatter.ts';
 import type { Observable } from 'rxjs';
 import { EmailNotifier } from '../notification/email-notifier.ts';
 import { SmsNotifier } from '../notification/sms-notifier.ts';
 import { CardHandler } from '../payment/card-handler.ts';
 import { PaypalHandler } from '../payment/paypal-handler.ts';
 import { TwintHandler } from '../payment/twint-handler.ts';
+import { MarkdownFormatter } from '../receipt/markdown-formatter.ts';
+import { PlainTextFormatter } from '../receipt/plain-text-formatter.ts';
 
-function resolveDelegate<T, I extends { isApplicableTo(context: T): boolean; getPriority(): number }>(owner: string, implementations: I[], context: T): I {
+function resolveDelegate<T, I extends { isApplicableTo(context: T): boolean; getPriority(): number }>(owner: string, implementations: I[], context?: T): I {
   const describe = (candidates: I[]) => candidates.map((c) => `${c.constructor?.name ?? 'UnknownImplementation'}(priority=${c.getPriority()})`).join(', ');
-  const applicable = implementations.filter((candidate) => candidate.isApplicableTo(context));
+  const where = context === undefined ? '' : ` for context=${stringify(context)}`;
+  const applicable = implementations.filter((candidate) => candidate.isApplicableTo(context as T));
   if (applicable.length === 0) {
-    throw new Error(`[${owner}] No applicable implementation for context=${stringify(context)}. Available=${describe(implementations)}`);
+    throw new Error(`[${owner}] No applicable implementation${where}. Available=${describe(implementations)}`);
   }
   if (applicable.length === 1) return applicable[0]!;
   const maxPriority = Math.max(...applicable.map((candidate) => candidate.getPriority()));
   const topCandidates = applicable.filter((candidate) => candidate.getPriority() === maxPriority);
   if (topCandidates.length === 1) return topCandidates[0]!;
-  throw new Error(`[${owner}] Ambiguous implementations for context=${stringify(context)}. HighestPriority=${maxPriority}. Applicable=${describe(applicable)}. HighestCandidates=${describe(topCandidates)}`);
+  throw new Error(`[${owner}] Ambiguous implementations${where}. HighestPriority=${maxPriority}. Applicable=${describe(applicable)}. HighestCandidates=${describe(topCandidates)}`);
 }
 
 function stringify(value: unknown): string {
@@ -68,6 +72,32 @@ export class PaymentHandlerDispatcher implements PaymentHandler {
 
   receipt(amount: number): Observable<string> {
     return this.delegate.receipt(amount);
+  }
+}
+
+export const ReceiptFormatterImplementations: Array<new (...args: any[]) => ReceiptFormatter> = [MarkdownFormatter, PlainTextFormatter];
+
+export class ReceiptFormatterDispatcher implements ReceiptFormatter {
+  private readonly implementations: ReceiptFormatter[];
+
+  constructor(implementations: ReceiptFormatter[]) {
+    this.implementations = implementations;
+  }
+
+  private get delegate(): ReceiptFormatter {
+    return resolveDelegate('ReceiptFormatterDispatcher', this.implementations);
+  }
+
+  isApplicableTo(): boolean {
+    return this.delegate.isApplicableTo();
+  }
+
+  getPriority(): number {
+    return this.delegate.getPriority();
+  }
+
+  format(lines: string[]): string {
+    return this.delegate.format(lines);
   }
 }
 
