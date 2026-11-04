@@ -21,8 +21,27 @@ export interface ImplScan {}
  *   pay(amount: number): string;
  * }
  */
-export interface Dispatchable<TContext> extends ImplScan {
+export interface Dispatchable<TContext = void> extends ImplScan {
+  /** Without a type argument the context is `void`: implementations declare `isApplicableTo()` and decide from their own state. */
   isApplicableTo(context: TContext): boolean;
   /** Higher wins when several implementations are applicable; a tie throws. */
   getPriority(): number;
+}
+
+/**
+ * Supplies the context for every `Dispatchable<TContext>` interface using the same `TContext`.
+ * A class implementing it is found by the CLI like an implementation; with `--target angular`
+ * `provideImplscan()` registers it and builds the `<INTERFACE>_CONTEXT` token from it, so the
+ * app config needs no provider per interface. `get()` is called on every dispatcher call.
+ *
+ * @example
+ * export class PaymentContextProvider implements DispatchContextProvider<PaymentContext> {
+ *   private readonly settings = inject(PAYMENT_SETTINGS);
+ *   get(): PaymentContext {
+ *     return { method: this.settings.method };
+ *   }
+ * }
+ */
+export interface DispatchContextProvider<TContext> {
+  get(): TContext;
 }

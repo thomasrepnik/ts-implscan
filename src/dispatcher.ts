@@ -93,7 +93,8 @@ export interface DispatcherMember {
 export interface DispatcherModel {
   interfaceName: string;
   className: string;
-  contextType: string;
+  /** text of the Dispatchable<...> type argument; undefined for a context-free dispatcher */
+  contextType?: string;
   /** without isApplicableTo / getPriority, in declaration order */
   members: DispatcherMember[];
   /** everything the copied texts need, including the interface and the context type */
@@ -113,13 +114,14 @@ export function analyzeDispatcher(
   const imports = new TypeImports(reserved);
   const collect = (node: Node | undefined) => (node ? collectImports(node, imports, importPath) : undefined);
 
+  // `extends Dispatchable` or `Dispatchable<void>`: no context at all
   const typeArg = marker.getTypeArguments()[0];
-  if (!typeArg) return fail(`${DISPATCH_MARKER} needs a type argument`);
+  const contextType = typeArg && typeArg.getKind() !== SyntaxKind.VoidKeyword ? typeArg : undefined;
   if (iface.getTypeParameters().length) return fail('generic interface');
   const type = iface.getType();
   if (type.getCallSignatures().length) return fail('call signature');
   if (type.getStringIndexType() || type.getNumberIndexType()) return fail('index signature');
-  let error = imports.add(importPath(iface.getSourceFile().getFilePath()), interfaceName) ?? collect(typeArg);
+  let error = imports.add(importPath(iface.getSourceFile().getFilePath()), interfaceName) ?? collect(contextType);
   if (error) return fail(error);
 
   const members: DispatcherMember[] = [];
@@ -177,7 +179,7 @@ export function analyzeDispatcher(
 
   return {
     ok: true,
-    model: { interfaceName, className: `${interfaceName}Dispatcher`, contextType: typeArg.getText(), members, imports },
+    model: { interfaceName, className: `${interfaceName}Dispatcher`, contextType: contextType?.getText(), members, imports },
   };
 }
 
@@ -233,17 +235,18 @@ function specifierOf(imp: ImportDeclaration, importPath: (file: string) => strin
 }
 
 /** Emitted once per generated file: picks the implementation a dispatcher forwards to. */
-export const RESOLVE_DELEGATE_SOURCE = `function resolveDelegate<T, I extends { isApplicableTo(context: T): boolean; getPriority(): number }>(owner: string, implementations: I[], context: T): I {
+export const RESOLVE_DELEGATE_SOURCE = `function resolveDelegate<T, I extends { isApplicableTo(context: T): boolean; getPriority(): number }>(owner: string, implementations: I[], context?: T): I {
   const describe = (candidates: I[]) => candidates.map((c) => \`\${c.constructor?.name ?? 'UnknownImplementation'}(priority=\${c.getPriority()})\`).join(', ');
-  const applicable = implementations.filter((candidate) => candidate.isApplicableTo(context));
+  const where = context === undefined ? '' : \` for context=\${stringify(context)}\`;
+  const applicable = implementations.filter((candidate) => candidate.isApplicableTo(context as T));
   if (applicable.length === 0) {
-    throw new Error(\`[\${owner}] No applicable implementation for context=\${stringify(context)}. Available=\${describe(implementations)}\`);
+    throw new Error(\`[\${owner}] No applicable implementation\${where}. Available=\${describe(implementations)}\`);
   }
   if (applicable.length === 1) return applicable[0]!;
   const maxPriority = Math.max(...applicable.map((candidate) => candidate.getPriority()));
   const topCandidates = applicable.filter((candidate) => candidate.getPriority() === maxPriority);
   if (topCandidates.length === 1) return topCandidates[0]!;
-  throw new Error(\`[\${owner}] Ambiguous implementations for context=\${stringify(context)}. HighestPriority=\${maxPriority}. Applicable=\${describe(applicable)}. HighestCandidates=\${describe(topCandidates)}\`);
+  throw new Error(\`[\${owner}] Ambiguous implementations\${where}. HighestPriority=\${maxPriority}. Applicable=\${describe(applicable)}. HighestCandidates=\${describe(topCandidates)}\`);
 }
 
 function stringify(value: unknown): string {
@@ -254,36 +257,41 @@ function stringify(value: unknown): string {
   }
 }`.split('\n');
 
-/** The dispatcher class, as lines. `tokens` are the Angular injection tokens; the plain target takes both via the constructor. */
+/** The dispatcher class, as lines. `tokens` are the Angular injection tokens; the plain target takes the same values via the constructor. */
 export function renderDispatcher(
   model: DispatcherModel,
   target: 'plain' | 'angular',
-  tokens?: { list: string; context: string },
+  tokens?: { list: string; context?: string },
 ): string[] {
   const { interfaceName, className, contextType } = model;
+  const withContext = contextType !== undefined;
   const head =
     target === 'angular' && tokens
       ? [
           `  private readonly implementations = inject(${tokens.list});`,
-          `  private readonly context = inject(${tokens.context});`,
+          ...(withContext ? [`  private readonly context = inject(${tokens.context});`] : []),
         ]
       : [
           `  private readonly implementations: ${interfaceName}[];`,
-          `  private readonly context: () => ${contextType};`,
+          ...(withContext ? [`  private readonly context: () => ${contextType};`] : []),
           '',
-          `  constructor(implementations: ${interfaceName}[], context: () => ${contextType}) {`,
+          `  constructor(implementations: ${interfaceName}[]${withContext ? `, context: () => ${contextType}` : ''}) {`,
           '    this.implementations = implementations;',
-          '    this.context = context;',
+          ...(withContext ? ['    this.context = context;'] : []),
           '  }',
         ];
 
   const blocks: string[][] = [
     [
       `  private get delegate(): ${interfaceName} {`,
-      `    return resolveDelegate('${className}', this.implementations, this.context());`,
+      `    return resolveDelegate('${className}', this.implementations${withContext ? ', this.context()' : ''});`,
       '  }',
     ],
-    [`  isApplicableTo(context: ${contextType}): boolean {`, '    return this.delegate.isApplicableTo(context);', '  }'],
+    [
+      `  isApplicableTo(${withContext ? `context: ${contextType}` : ''}): boolean {`,
+      `    return this.delegate.isApplicableTo(${withContext ? 'context' : ''});`,
+      '  }',
+    ],
     ['  getPriority(): number {', '    return this.delegate.getPriority();', '  }'],
   ];
   for (const member of model.members) {
