@@ -18,7 +18,7 @@ The package contains two things:
 
 | What | How you use it |
 |---|---|
-| The `ImplScan` and `Dispatchable` marker interfaces | `import type { ImplScan } from '@thomasrepnik/ts-implscan'` |
+| The marker interfaces `ImplScan`, `Dispatchable`, `DispatchContextProvider` | `import type { ImplScan } from '@thomasrepnik/ts-implscan'` |
 | The `ts-implscan` CLI (the generator) | `npx ts-implscan`, or in a `package.json` script |
 
 It's a dev dependency because it only runs at build time. The marker imports are type-only and
@@ -214,36 +214,78 @@ export class CardHandler implements PaymentHandler {
 
 The generator still writes the list and its token, and additionally a `PaymentHandlerDispatcher`
 class that implements `PaymentHandler` and forwards every member to the applicable implementation.
-The only thing it can't know is where the context comes from, so you provide that.
 
 #### With Angular
 
-`provideImplscan()` registers the dispatcher. Provide the generated context token with a
-**function** that returns the current context. It is called on every dispatcher call, so a
-`Signal` works as well as a plain function:
+`provideImplscan()` registers the dispatcher, and `app.config.ts` needs nothing else:
 
 ```ts
 // app.config.ts
-providers: [
-  provideImplscan(),
-  // static: read the method once at startup
-  { provide: PAYMENT_HANDLER_CONTEXT, useFactory: () => { const method = inject(PAYMENT_METHOD); return () => ({ method }); } },
-  // reactive: a Signal<PaymentContext> is already a () => PaymentContext
-  // { provide: PAYMENT_HANDLER_CONTEXT, useFactory: () => inject(PaymentSettings).context },
-]
+providers: [provideImplscan()],
 
 // anywhere
 private readonly payment = inject(PaymentHandlerDispatcher);
 this.payment.pay(42); // forwarded to CardHandler, PaypalHandler or TwintHandler
 ```
 
-A component or route can use its own context: provide `PAYMENT_HANDLER_CONTEXT` **and**
-`PaymentHandlerDispatcher` in that injector's `providers`. The class has no constructor arguments
-and no decorator, so the bare class name works as a provider.
+#### Where the context comes from
+
+The generator knows the context *type* but not where its values live. One of three things supplies
+them:
+
+1. **A context provider class** next to the interface (recommended). It implements
+   `DispatchContextProvider<PaymentContext>`, the scan finds it like an implementation, and
+   `provideImplscan()` builds the `PAYMENT_HANDLER_CONTEXT` token from it. `get()` runs on every
+   dispatcher call, so it may read a signal:
+
+   ```ts
+   export class PaymentContextProvider implements DispatchContextProvider<PaymentContext> {
+     private readonly settings = inject(PaymentSettings);
+     get(): PaymentContext {
+       return { method: this.settings.method() };
+     }
+   }
+   ```
+
+   One provider serves every interface that uses the same context type. The type must be a named
+   interface or alias, and two providers for one type produce a warning and no wiring.
+
+2. **No context at all.** Extend `Dispatchable` without a type argument. Then `isApplicableTo()`
+   takes no parameter, no token is generated, and each implementation decides from what it injects:
+
+   ```ts
+   export interface ReceiptFormatter extends Dispatchable {
+     format(lines: string[]): string;
+   }
+
+   export class MarkdownFormatter implements ReceiptFormatter {
+     private readonly settings = inject(ReceiptSettings);
+     isApplicableTo() {
+       return this.settings.format() === 'md';
+     }
+     getPriority() {
+       return 10;
+     }
+     format(lines: string[]) {
+       return lines.map((line) => `- ${line}`).join('\n');
+     }
+   }
+   ```
+
+3. **The token by hand.** A `() => PaymentContext` provider for `PAYMENT_HANDLER_CONTEXT` (a
+   `Signal` qualifies) overrides a provider class, for tests or for a component or route with its
+   own context. In that case provide `PAYMENT_HANDLER_CONTEXT` **and** `PaymentHandlerDispatcher` in
+   the same `providers`; the class has no constructor arguments and no decorator, so the bare class
+   name works:
+
+   ```ts
+   providers: [PaymentHandlerDispatcher, { provide: PAYMENT_HANDLER_CONTEXT, useValue: () => ({ method: 'card' }) }],
+   ```
 
 #### Without Angular
 
-The plain dispatcher takes the implementations and the context function in its constructor:
+The plain dispatcher takes the implementations and, for a typed context, the context function in
+its constructor:
 
 ```ts
 let method: PaymentContext['method'] = 'twint';
@@ -251,6 +293,8 @@ const payment = new PaymentHandlerDispatcher(handlers, () => ({ method }));
 payment.pay(42); // TwintHandler
 method = 'card';
 payment.pay(42); // CardHandler: applicable with priority 10, PaypalHandler only has 0
+
+const receipt = new ReceiptFormatterDispatcher(formatters); // context-free: no second argument
 ```
 
 #### How the delegate is chosen
@@ -304,12 +348,15 @@ export class PaymentHandlerDispatcher implements PaymentHandler {
 }
 
 // inside provideImplscan()
+{ provide: PaymentContextProvider, useClass: PaymentContextProvider },
+{ provide: PAYMENT_HANDLER_CONTEXT, useFactory: () => { const provider = inject(PaymentContextProvider); return () => provider.get(); } },
 { provide: PaymentHandlerDispatcher, useClass: PaymentHandlerDispatcher },
 ```
 
 Signatures are copied from the interface, and the types they use are imported into the
-generated file. `resolveDelegate` is emitted once per generated file. The plain target has the
-same class with a constructor instead of `inject()`.
+generated file. `resolveDelegate` is emitted once per generated file. A context-free dispatcher
+has no `context` field and no token. The plain target has the same class with a constructor
+instead of `inject()`.
 </details>
 
 ## Good to know
@@ -397,11 +444,14 @@ and no extension with `bundler`, which is what Angular uses.
   or call signatures, generic interfaces, members inherited from a generic base other than
   `Dispatchable`, signatures using non-exported types, and two imported types sharing one name.
 - `isApplicableTo` runs on every dispatcher call; keep it cheap.
+- A `DispatchContextProvider` is matched to interfaces by its context type, which must be a named
+  interface or type alias. Inline object types never match.
 
 ## Development
 
 This repository contains the library in `src/` and a runnable demo in `example/`. The demo has
-two marked interfaces: `PaymentHandler` (`Dispatchable`, with a generated dispatcher) and
+three marked interfaces: `PaymentHandler` (`Dispatchable<PaymentContext>` with a scanned context
+provider), `ReceiptFormatter` (context-free `Dispatchable`, try `RECEIPT_FORMAT=md npm start`) and
 `Notifier` (`ImplScan`, a plain list).
 
 ```sh
