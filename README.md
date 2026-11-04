@@ -42,7 +42,7 @@ You need Node 22 or newer.
 |---|---|
 | `interface X extends ImplScan` | `XImplementations` array; Angular: `X_LIST` token and multi providers |
 | `interface X extends Dispatchable<Ctx>` | the above, plus `XDispatcher` and (Angular) the `X_CONTEXT` token |
-| `interface X extends Dispatchable` | the above without a context: `XDispatcher` only |
+| `interface X extends Dispatchable` | list, `X_LIST` and `XDispatcher`, but no context and no `X_CONTEXT` token |
 | `class P implements DispatchContextProvider<Ctx>` | Angular: `provideImplscan()` builds `X_CONTEXT` from `P` for every `X` using `Ctx` |
 
 Everything lands in one generated file, and in Angular one `provideImplscan()` registers it all.
@@ -117,9 +117,20 @@ export class PaymentService {
 }
 ```
 
-Implementations can use DI themselves, for example `private readonly http = inject(HttpClient)`.
-Mark them with `@Injectable()`, but **without** `providedIn: 'root'`. `provideImplscan()` already
-creates one instance per implementation, so a root-provided implementation would exist twice.
+`PaymentService` above is an ordinary consumer of the list, so `providedIn: 'root'` is fine there.
+The **implementations** are different: `provideImplscan()` already creates one instance of each,
+so an implementation must not be root-provided as well, or it would exist twice. If an
+implementation needs DI itself, mark it with a bare `@Injectable()`:
+
+```ts
+// twint-handler.ts
+@Injectable() // no providedIn: 'root'
+export class TwintHandler implements PaymentHandler {
+  private readonly http = inject(HttpClient);
+  name = 'twint';
+  pay(amount: number) { ... }
+}
+```
 
 <details>
 <summary>What gets generated</summary>
@@ -307,15 +318,15 @@ let method: PaymentContext['method'] = 'twint';
 const payment = new PaymentHandlerDispatcher(handlers, () => ({ method }));
 payment.pay(42); // TwintHandler
 method = 'card';
-payment.pay(42); // CardHandler: applicable with priority 10, PaypalHandler only has 0
+payment.pay(42); // CardHandler
 
 const receipt = new ReceiptFormatterDispatcher(formatters); // context-free: no second argument
 ```
 
 ### How the delegate is chosen
 
-On **every call**, the dispatcher reads the context and filters the implementations with
-`isApplicableTo(context)`:
+On **every call**, the dispatcher reads the context (if the interface has one) and filters the
+implementations with `isApplicableTo(context)`:
 
 - none applicable: throws, naming the context and all candidates with their priorities
 - exactly one: used, whatever its priority
