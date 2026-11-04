@@ -7,7 +7,8 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 const MARKER = `export interface ImplScan {}
-export interface Dispatchable<T> extends ImplScan { isApplicableTo(context: T): boolean; getPriority(): number; }`;
+export interface Dispatchable<T = void> extends ImplScan { isApplicableTo(context: T): boolean; getPriority(): number; }
+export interface DispatchContextProvider<T> { get(): T }`;
 
 function runCli(files: Record<string, string>): { stdout: string; stderr: string; status: number | null } {
   const dir = mkdtempSync(path.join(tmpdir(), 'implscan-cli-'));
@@ -59,4 +60,50 @@ export interface B extends ImplScan { ping(): void }`,
   assert.match(stdout, /import type \{ B \} from '\.\.\/b';/);
   assert.doesNotMatch(stdout, /from '\.\.\/types'/);
   assert.doesNotMatch(stdout, /ADispatcher/);
+});
+
+test('a context-free interface gets a dispatcher but no context token', () => {
+  const { stdout, stderr } = runCli({
+    'src/f.ts': `import type { Dispatchable } from './marker';
+export interface F extends Dispatchable { format(lines: string[]): string }`,
+    'src/plain.ts': `import type { F } from './f';
+export class PlainText implements F { isApplicableTo() { return true; } getPriority() { return 0; } format(lines: string[]) { return lines.join('\\n'); } }`,
+  });
+  assert.equal(stderr, '');
+  assert.match(stdout, /export class FDispatcher implements F \{/);
+  assert.match(stdout, /isApplicableTo\(\): boolean \{/);
+  assert.doesNotMatch(stdout, /F_CONTEXT/);
+  assert.match(stdout, /\{ provide: FDispatcher, useClass: FDispatcher \},/);
+});
+
+const PROVIDER = `import type { DispatchContextProvider } from './marker';
+import type { Ctx } from './h';
+export class CtxProvider implements DispatchContextProvider<Ctx> { get() { return { method: 'card' }; } }`;
+
+test('a DispatchContextProvider class is wired into provideImplscan', () => {
+  const { stdout, stderr } = runCli({ 'src/h.ts': H, 'src/impl.ts': IMPL, 'src/ctx.provider.ts': PROVIDER });
+  assert.equal(stderr, '');
+  assert.match(stdout, /^import \{ CtxProvider \} from '\.\.\/ctx\.provider';$/m);
+  const providers = stdout.slice(stdout.indexOf('export function provideImplscan'));
+  assert.deepEqual(
+    providers.split('\n').filter((l) => l.includes('provide:')),
+    [
+      `    { provide: H_LIST, useClass: Impl, multi: true },`,
+      `    { provide: CtxProvider, useClass: CtxProvider },`,
+      `    { provide: H_CONTEXT, useFactory: () => { const provider = inject(CtxProvider); return () => provider.get(); } },`,
+      `    { provide: HDispatcher, useClass: HDispatcher },`,
+    ],
+  );
+});
+
+test('several providers for one context type warn and wire none', () => {
+  const { stdout, stderr } = runCli({
+    'src/h.ts': H,
+    'src/impl.ts': IMPL,
+    'src/a.provider.ts': PROVIDER.replace('CtxProvider', 'AProvider'),
+    'src/b.provider.ts': PROVIDER.replace('CtxProvider', 'BProvider'),
+  });
+  assert.match(stderr, /several context providers for Ctx: AProvider, BProvider/);
+  assert.doesNotMatch(stdout, /useFactory/);
+  assert.match(stdout, /\{ provide: HDispatcher, useClass: HDispatcher \},/);
 });
