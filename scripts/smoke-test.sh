@@ -30,6 +30,11 @@ import type { Dispatchable } from '@thomasrepnik/ts-implscan';
 export interface PaymentContext { method: string }
 export interface PaymentHandler extends Dispatchable<PaymentContext> { pay(amount: number): string }
 TS
+cat > src/payment-context.provider.ts <<'TS'
+import type { DispatchContextProvider } from '@thomasrepnik/ts-implscan';
+import type { PaymentContext } from './payment';
+export class PaymentContextProvider implements DispatchContextProvider<PaymentContext> { get() { return { method: 'card' }; } }
+TS
 cat > src/card.ts <<'TS'
 import type { PaymentContext, PaymentHandler } from './payment';
 export class CardHandler implements PaymentHandler {
@@ -48,6 +53,8 @@ grep -q "export const PAYMENT_HANDLER_CONTEXT = new InjectionToken<() => Payment
 grep -q "export class PaymentHandlerDispatcher implements PaymentHandler {" "$out"
 grep -q "  pay(amount: number): string {" "$out"
 grep -q "{ provide: PaymentHandlerDispatcher, useClass: PaymentHandlerDispatcher }," "$out"
+grep -q "{ provide: PaymentContextProvider, useClass: PaymentContextProvider }," "$out"
+grep -q "{ provide: PAYMENT_HANDLER_CONTEXT, useFactory: () => { const provider = inject(PaymentContextProvider); return () => provider.get(); } }," "$out"
 ! grep -q "GreeterDispatcher" "$out"
 
 echo "package smoke test passed ($tarball)"
