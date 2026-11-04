@@ -3,3 +3,5 @@ node_modules/
 openspec/
 .DS_Store
 dist/
+/.idea/
+/docs/
