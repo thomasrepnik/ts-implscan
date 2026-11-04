@@ -50,8 +50,10 @@ const outDir = path.dirname(outFile);
 // tsconfig.app.json only lists main.ts).
 const project = new Project({ tsConfigFilePath: args.project, skipAddingFilesFromTsConfig: true });
 project.addSourceFilesAtPaths([`${args.src}/**/*.ts`, `!${args.src}/**/*.spec.ts`, `!${args.src}/**/*.d.ts`]);
-// generated files are never scanned, so a generated dispatcher is not an implementation
-const sourceFiles = project.getSourceFiles().filter((f) => !f.getFullText().startsWith(GENERATED_HEADER));
+// Generated files (the output file, and anything carrying the header near the top, e.g. a
+// second registry) are never scanned, so a generated dispatcher is not an implementation.
+const isGenerated = (text: string) => text.split('\n', 5).some((line) => line.startsWith(GENERATED_HEADER));
+const sourceFiles = project.getSourceFiles().filter((f) => f.getFilePath() !== outFile && !isGenerated(f.getFullText()));
 
 // Pick the import extension the tsconfig expects: `.ts` (Node type stripping),
 // `.js` (NodeNext) or none (Angular's `bundler` resolution).
@@ -123,6 +125,14 @@ const reserved = new Set(entries.flatMap((e) => e.impls.map((i) => i.name)));
 if (angular) for (const name of ['InjectionToken', 'Provider', 'inject']) reserved.add(name);
 
 const typeImports = new TypeImports(reserved);
+// interfaces first, so that no dispatcher import can rebind an interface name
+for (const { iface } of entries) {
+  const error = typeImports.add(importPath(iface.file), iface.name);
+  if (error) {
+    console.error(`cannot generate: ${error}`);
+    process.exit(1);
+  }
+}
 const valueImports: string[] = [];
 const exports: string[] = [];
 const providers: string[] = [];
@@ -131,7 +141,6 @@ const dispatchers = new Map<string, string>(); // interface name -> dispatcher c
 
 for (const { iface, impls, decl, marker } of entries) {
   impls.sort((a, b) => a.name.localeCompare(b.name));
-  typeImports.add(importPath(iface.file), iface.name);
   for (const impl of impls) valueImports.push(`import { ${impl.name} } from '${importPath(impl.file)}';`);
   // same shape as Angular's Type<T>, so it can be used directly as `useClass`
   exports.push(

@@ -145,6 +145,7 @@ const unsupported: Array<[string, string, RegExp]> = [
   ['non-exported type', `interface Hidden {}\nexport interface H extends Dispatchable<Ctx> { get(): Hidden }`, /Hidden.*not exported/],
   ['reserved member name', `export interface H extends Dispatchable<Ctx> { delegate: string }`, /reserved.*delegate/],
   ['non-identifier member name', `export interface H extends Dispatchable<Ctx> { 'pay-now'(): void }`, /name.*pay-now/],
+  ['import() type', `export interface H extends Dispatchable<Ctx> { load(): import('./ctx').Ctx }`, /import\(\).*load/],
 ];
 for (const [title, body, reason] of unsupported) {
   test(`rejects ${title}`, () => {

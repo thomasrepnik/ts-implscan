@@ -184,6 +184,8 @@ export function analyzeDispatcher(
 // Every type name referenced inside `node` becomes an import of the generated file.
 function collectImports(node: Node, imports: TypeImports, importPath: (file: string) => string): string | undefined {
   for (const n of [node, ...node.getDescendants()]) {
+    // `import('./x').T` would need its specifier rewritten for the output folder
+    if (Node.isImportTypeNode(n)) return 'import() type';
     let entity: Node | undefined;
     if (Node.isTypeReference(n)) entity = n.getTypeName();
     else if (Node.isTypeQuery(n)) entity = n.getExprName();
