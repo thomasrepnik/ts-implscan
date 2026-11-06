@@ -16,6 +16,7 @@ applicable implementation.
 - [Good to know](#good-to-know)
 - [Limits](#limits)
 - [Why](#why)
+- [Refactoring with an AI agent](#refactoring-with-an-ai-agent)
 - [CLI options](#cli-options)
 - [Development](#development)
 
@@ -473,6 +474,20 @@ reasons, such as Angular's `OnInit`.
 
 It's probably overkill if you have two implementations that rarely change. A hand-written array
 is fine then.
+
+## Refactoring with an AI agent
+
+The package includes an [agent skill](skills/ts-implscan-refactor/SKILL.md) that gives every refactor
+the same shape: file layout, context provider, priorities and where `provideImplscan()` goes. Copy it
+to where your agent looks for skills, for Claude Code:
+
+```sh
+mkdir -p .claude/skills
+cp -R node_modules/@thomasrepnik/ts-implscan/skills/ts-implscan-refactor .claude/skills/
+```
+
+The skill only covers the shape. [`evals/refactor-skill`](evals/refactor-skill/FINDINGS.md) has the
+scenarios it was tested on and the results.
 
 ## CLI options
 

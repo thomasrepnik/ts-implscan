@@ -1,0 +1,10 @@
+{
+  "requireDispatcher": true,
+  "forbid": [
+    {
+      "name": "selection branch is gone",
+      "pattern": "method\\(\\)\\s*===\\s*'(card|paypal)'\\s*\\?",
+      "file": "payment-session"
+    }
+  ]
+}
