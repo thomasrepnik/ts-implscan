@@ -1,0 +1,1 @@
+VipFeeCalculator, SwissFeeCalculator and StandardFeeCalculator have a lot in common, introduce a Dispatchable using ts-implscan.
