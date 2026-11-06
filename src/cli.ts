@@ -175,6 +175,10 @@ for (const { iface, impls, decl, marker } of entries) {
 
   if (!marker) continue;
   const analysis = analyzeDispatcher(decl, marker, importPath, reserved);
+  if (!analysis.ok && analysis.fatal) {
+    console.error(`cannot generate: ${analysis.reason}`);
+    process.exit(1);
+  }
   const reason = analysis.ok ? typeImports.merge(analysis.model.imports) : analysis.reason;
   if (!analysis.ok || reason) {
     console.warn(`no dispatcher for ${iface.name}: ${reason}`);

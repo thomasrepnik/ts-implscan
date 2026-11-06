@@ -242,6 +242,31 @@ test('renders the plain dispatcher with an explicit constructor', () => {
   assert.ok(!lines.join('\n').includes('inject('));
 });
 
+const redeclared: Array<[string, string, string]> = [
+  ['the same isApplicableTo', 'isApplicableTo', `export interface H extends Dispatchable<Ctx> { isApplicableTo(context: Ctx): boolean }`],
+  ['the same getPriority', 'getPriority', `export interface H extends Dispatchable<Ctx> { getPriority(): number }`],
+  ['a context-free isApplicableTo', 'isApplicableTo', `export interface H extends Dispatchable<void> { isApplicableTo(): boolean }`],
+  ['a narrowed return type', 'getPriority', `export interface H extends Dispatchable<Ctx> { getPriority(): 1 | 2 }`],
+  ['an extra optional parameter', 'isApplicableTo', `export interface H extends Dispatchable<Ctx> { isApplicableTo(c: Ctx, strict?: boolean): boolean }`],
+  ['an overload', 'isApplicableTo', `export interface H extends Dispatchable<Ctx> { isApplicableTo(c: Ctx): boolean; isApplicableTo(c: string): boolean }`],
+  ['a property', 'getPriority', `export interface H extends Dispatchable<Ctx> { getPriority: () => number }`],
+  ['a base listed first', 'getPriority', `export interface Base { getPriority(): number }\nexport interface H extends Base, Dispatchable<Ctx> {}`],
+  ['a base listed after the marker', 'getPriority', `export interface Base { getPriority(): number }\nexport interface H extends Dispatchable<Ctx>, Base {}`],
+  ['a generic base', 'isApplicableTo', `export interface Base<T> { isApplicableTo(c: T): boolean }\nexport interface H extends Base<Ctx>, Dispatchable<Ctx> {}`],
+  ['a type alias base', 'getPriority', `export type Base = { getPriority(): number };\nexport interface H extends Base, Dispatchable<Ctx> {}`],
+  ['a generic interface', 'getPriority', `export interface H<T> extends Dispatchable<Ctx> { getPriority(): number; run(): T }`],
+];
+for (const [title, member, body] of redeclared) {
+  test(`stops the generation for ${title}`, () => {
+    const p = project({ '/src/h.ts': `import type { Dispatchable } from './marker';\nexport interface Ctx {}\n${body}` });
+    const r = analyze(p, '/src/h.ts', 'H');
+    assert.equal(r.ok, false, JSON.stringify(r));
+    if (r.ok) return;
+    assert.equal(r.fatal, true);
+    assert.match(r.reason, new RegExp(`\\bH\\b.*\\b${member}\\b.*automatically.*must not`));
+  });
+}
+
 test('resolveDelegate source applies the selection rules', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'implscan-'));
   const file = path.join(dir, 'resolve.ts');

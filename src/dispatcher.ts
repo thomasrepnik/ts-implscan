@@ -13,6 +13,8 @@ import {
 export const DISPATCH_MARKER = 'Dispatchable';
 // fields and the getter of the generated class, which an interface member may not shadow
 const RESERVED_MEMBERS = new Set(['implementations', 'context', 'delegate']);
+// always rendered by renderDispatcher, so only Dispatchable itself may declare them
+const FIXED_MEMBERS = ['isApplicableTo', 'getPriority'];
 
 /** Type-only imports of a generated file, keyed by local name so that a name is never bound twice. */
 export class TypeImports {
@@ -101,7 +103,8 @@ export interface DispatcherModel {
   imports: TypeImports;
 }
 
-export type DispatcherAnalysis = { ok: true; model: DispatcherModel } | { ok: false; reason: string };
+/** `fatal`: the generation must stop, instead of just leaving out this dispatcher. */
+export type DispatcherAnalysis = { ok: true; model: DispatcherModel } | { ok: false; reason: string; fatal?: boolean };
 
 export function analyzeDispatcher(
   iface: InterfaceDeclaration,
@@ -111,6 +114,14 @@ export function analyzeDispatcher(
 ): DispatcherAnalysis {
   const interfaceName = iface.getName();
   const fail = (reason: string): DispatcherAnalysis => ({ ok: false, reason });
+  const redeclared = findRedeclaredFixedMember(iface);
+  if (redeclared) {
+    return {
+      ok: false,
+      fatal: true,
+      reason: `${interfaceName} or one of its base types declares ${redeclared}. isApplicableTo and getPriority are created automatically and must not be provided by the interface; remove the declaration (implementation classes still implement them).`,
+    };
+  }
   const imports = new TypeImports(reserved);
   const collect = (node: Node | undefined) => (node ? collectImports(node, imports, importPath) : undefined);
 
@@ -181,6 +192,17 @@ export function analyzeDispatcher(
     ok: true,
     model: { interfaceName, className: `${interfaceName}Dispatcher`, contextType: contextType?.getText(), members, imports },
   };
+}
+
+// Each base is looked at on its own: on the interface's type alone, a Dispatchable listed first hides the others.
+function findRedeclaredFixedMember(iface: InterfaceDeclaration): string | undefined {
+  for (const type of [iface.getType(), ...iface.getExtends().map((base) => base.getType())]) {
+    for (const name of FIXED_MEMBERS) {
+      const owner = type.getProperty(name)?.getDeclarations()[0]?.getParent();
+      if (owner && !(Node.isInterfaceDeclaration(owner) && owner.getName() === DISPATCH_MARKER)) return name;
+    }
+  }
+  return undefined;
 }
 
 // Every type name referenced inside `node` becomes an import of the generated file.

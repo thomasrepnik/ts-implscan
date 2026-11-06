@@ -424,6 +424,9 @@ Collecting:
 
 Dispatching:
 
+- A `Dispatchable` interface and its base types must not declare `isApplicableTo` or `getPriority`
+  themselves, whatever the signature: the dispatcher creates them automatically, so the generation
+  stops with an error. Implementation classes still implement both.
 - Some interface shapes get a warning and no dispatcher: overloaded or optional members,
   destructured parameters, accessors, `this` return types, index or call signatures, generic
   interfaces, members inherited from a generic base other than `Dispatchable`, signatures using

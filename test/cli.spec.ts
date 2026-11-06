@@ -76,6 +76,25 @@ export class PlainText implements F { isApplicableTo() { return true; } getPrior
   assert.match(stdout, /\{ provide: FDispatcher, useClass: FDispatcher \},/);
 });
 
+test('isApplicableTo redeclared in the interface stops the generation with an error', () => {
+  const { stdout, stderr, status } = runCli({
+    'src/p.ts': `import type { Dispatchable } from './marker';
+export interface PaymentContext { method: string }
+export interface PaymentHandler extends Dispatchable<PaymentContext> {
+  isApplicableTo(context: PaymentContext): boolean;
+  pay(): string;
+}
+export class CardHandler implements PaymentHandler {
+  isApplicableTo() { return true; }
+  getPriority() { return 0; }
+  pay() { return 'card'; }
+}`,
+  });
+  assert.equal(status, 1);
+  assert.equal(stdout, '');
+  assert.match(stderr, /^cannot generate: PaymentHandler .*isApplicableTo.*automatically.*must not/m);
+});
+
 const PROVIDER = `import type { DispatchContextProvider } from './marker';
 import type { Ctx } from './h';
 export class CtxProvider implements DispatchContextProvider<Ctx> { get() { return { method: 'card' }; } }`;
