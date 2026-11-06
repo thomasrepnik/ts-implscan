@@ -1,0 +1,20 @@
+{
+  "requireDispatcher": true,
+  "registryContains": [
+    {
+      "name": "the new interface gets a dispatcher and 2 implementations",
+      "pattern": "export class (?!Currency)\\w+Dispatcher\\b"
+    },
+    {
+      "name": "both new implementations are collected",
+      "pattern": "(useClass: \\w+, multi: true[^]*){4}"
+    }
+  ],
+  "forbid": [
+    {
+      "name": "selection branch is gone",
+      "pattern": "kind\\(\\)\\s*===",
+      "file": "receipt-export"
+    }
+  ]
+}

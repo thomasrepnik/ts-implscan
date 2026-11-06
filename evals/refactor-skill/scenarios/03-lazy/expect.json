@@ -1,0 +1,14 @@
+{
+  "requireDispatcher": true,
+  "notInInitialBundle": [
+    "LAZY_PDF_FONT_TABLE",
+    "LAZY_XML_SCHEMA_TABLE"
+  ],
+  "forbid": [
+    {
+      "name": "selection branch is gone",
+      "pattern": "format\\(\\)\\s*===",
+      "file": "export-page"
+    }
+  ]
+}

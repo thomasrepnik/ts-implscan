@@ -44,6 +44,8 @@ export class CardHandler implements PaymentHandler {
 }
 TS
 
+test -f node_modules/@thomasrepnik/ts-implscan/skills/ts-implscan-refactor/SKILL.md
+
 npx ts-implscan --target angular
 out=src/generated/implscan-registry.ts
 grep -q "import { Hello } from '../hello';" "$out"
