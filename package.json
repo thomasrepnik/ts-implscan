@@ -1,6 +1,6 @@
 {
   "name": "@thomasrepnik/ts-implscan",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Mark an interface, and ts-implscan finds every class that implements it at build time, then generates a typed registry, a dispatcher that picks the right one, and Angular providers.",
   "keywords": [
     "typescript",
