@@ -9,10 +9,6 @@ export class PdfStatementExporter implements StatementExporter {
     return context.format === 'pdf';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   export(total: number): string {
     return `pdf:${total}:${FONT_TABLE.length}`;
   }

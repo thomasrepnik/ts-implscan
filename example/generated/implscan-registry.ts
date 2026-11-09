@@ -12,16 +12,17 @@ import { TwintHandler } from '../payment/twint-handler.ts';
 import { MarkdownFormatter } from '../receipt/markdown-formatter.ts';
 import { PlainTextFormatter } from '../receipt/plain-text-formatter.ts';
 
-function resolveDelegate<T, I extends { isApplicableTo(context: T): boolean; getPriority(): number }>(owner: string, implementations: I[], context?: T): I {
-  const describe = (candidates: I[]) => candidates.map((c) => `${c.constructor?.name ?? 'UnknownImplementation'}(priority=${c.getPriority()})`).join(', ');
+function resolveDelegate<T, I extends { isApplicableTo(context: T): boolean; getPriority?(): number }>(owner: string, implementations: I[], context?: T): I {
+  const priority = (candidate: I) => candidate.getPriority?.() ?? 0;
+  const describe = (candidates: I[]) => candidates.map((c) => `${c.constructor?.name ?? 'UnknownImplementation'}(priority=${priority(c)})`).join(', ');
   const where = context === undefined ? '' : ` for context=${stringify(context)}`;
   const applicable = implementations.filter((candidate) => candidate.isApplicableTo(context as T));
   if (applicable.length === 0) {
     throw new Error(`[${owner}] No applicable implementation${where}. Available=${describe(implementations)}`);
   }
   if (applicable.length === 1) return applicable[0]!;
-  const maxPriority = Math.max(...applicable.map((candidate) => candidate.getPriority()));
-  const topCandidates = applicable.filter((candidate) => candidate.getPriority() === maxPriority);
+  const maxPriority = Math.max(...applicable.map(priority));
+  const topCandidates = applicable.filter((candidate) => priority(candidate) === maxPriority);
   if (topCandidates.length === 1) return topCandidates[0]!;
   throw new Error(`[${owner}] Ambiguous implementations${where}. HighestPriority=${maxPriority}. Applicable=${describe(applicable)}. HighestCandidates=${describe(topCandidates)}`);
 }
@@ -55,7 +56,7 @@ export class PaymentHandlerDispatcher implements PaymentHandler {
   }
 
   getPriority(): number {
-    return this.delegate.getPriority();
+    return this.delegate.getPriority?.() ?? 0;
   }
 
   get name(): string {
@@ -93,7 +94,7 @@ export class ReceiptFormatterDispatcher implements ReceiptFormatter {
   }
 
   getPriority(): number {
-    return this.delegate.getPriority();
+    return this.delegate.getPriority?.() ?? 0;
   }
 
   format(lines: string[]): string {

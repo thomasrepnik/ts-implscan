@@ -71,3 +71,18 @@ test('specs may sit beside the class they test', () => {
   const { status, output } = check(VALID, (r) => writeFileSync(join(r, 'src/app/payment/handlers/impl/card-payment.service.spec.ts'), ''));
   assert.equal(status, 0, output);
 });
+
+test('accepts implementations with and without getPriority', () => {
+  const { status, output } = check(VALID, (r) => {
+    writeFileSync(
+      join(r, 'src/app/payment/handlers/impl/card-payment.service.ts'),
+      `export class CardPaymentService implements PaymentHandler {\n  isApplicableTo(context: PaymentContext) { return context.method === 'card'; }\n  getPriority() { return 10; }\n  pay() { return 'card'; }\n}`,
+    );
+    writeFileSync(
+      join(r, 'src/app/payment/handlers/impl/twint-payment.service.ts'),
+      `export class TwintPaymentService implements PaymentHandler {\n  isApplicableTo() { return true; }\n  pay() { return 'twint'; }\n}`,
+    );
+  });
+  assert.equal(status, 0, output);
+  assert.match(output, /layout ok: PaymentHandler/);
+});

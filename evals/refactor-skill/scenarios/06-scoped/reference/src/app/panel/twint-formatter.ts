@@ -10,10 +10,6 @@ export class TwintFormatter implements PaymentFormatter {
     return context.method === 'twint';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   format(amount: number): string {
     return `twint#${this.state.count()}:${amount}`;
   }

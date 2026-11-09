@@ -247,6 +247,9 @@ export class CardHandler implements PaymentHandler {
 }
 ```
 
+`getPriority()` is optional and defaults to `0`. When the `isApplicableTo` conditions never
+overlap, leave it out.
+
 ### 3. Supply the context
 
 The generator knows the context *type*, but not where its values live. Pick one of three ways.
@@ -330,7 +333,7 @@ implementations with `isApplicableTo(context)`:
 
 - none applicable: throws, naming the context and all candidates with their priorities
 - exactly one: used, whatever its priority
-- several: the highest `getPriority()` wins
+- several: the highest `getPriority()` wins (a missing `getPriority` counts as `0`)
 - a tie for the highest priority: throws, naming the tied candidates
 
 Because the choice is made per call, a context that changes between calls switches the

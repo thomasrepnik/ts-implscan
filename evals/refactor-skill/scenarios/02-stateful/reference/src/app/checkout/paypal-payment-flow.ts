@@ -9,10 +9,6 @@ export class PaypalPaymentFlow implements PaymentFlow {
     return context.method === 'paypal';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   begin(amount: number): void {
     this.amount = amount;
   }

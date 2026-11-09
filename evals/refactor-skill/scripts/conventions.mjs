@@ -12,8 +12,8 @@ const HOOKS = ['prestart', 'prebuild', 'prewatch', 'pretest'];
 const FORWARDERS = { '04': 'payment-router.ts', '05': 'fee.service.ts' };
 // a selecting class with logic of its own, which has to stay
 const KEPT = { '02': 'payment-session.ts' };
-// the priorities that reproduce the old if/else order; every other scenario is exclusive
-const PRIORITIES = { '05': '0,10,20' };
+// the priorities that reproduce the old if/else order ('-' = no getPriority); every other scenario is exclusive
+const PRIORITIES = { '05': '-,10,20' };
 
 function evaluate(name, run) {
   const changed = sh('git status --short --untracked-files=all -- src', run).out.split('\n').filter(Boolean).map((l) => l.slice(3).trim());
@@ -28,13 +28,14 @@ function evaluate(name, run) {
   const { problems } = checkLayout([feature]);
   process.chdir(cwd);
   const impl = sources.filter((f) => /isApplicableTo\s*\(/.test(readFileSync(f, 'utf8')));
-  const priorities = [...new Set(impl.flatMap((f) => [...readFileSync(f, 'utf8').matchAll(/getPriority\(\)[^{]*\{\s*return\s+(-?\d+)/g)].map((m) => Number(m[1]))))].sort((a, b) => a - b).join(',');
+  const priorityOf = (f) => readFileSync(f, 'utf8').match(/getPriority\(\)[^{]*\{\s*return\s+(-?\d+)/)?.[1] ?? '-';
+  const priorities = [...new Set(impl.map(priorityOf))].sort((a, b) => (a === '-' ? -Infinity : Number(a)) - (b === '-' ? -Infinity : Number(b))).join(',');
   const pkg = readJson(join(run, 'package.json'));
   const scripts = pkg.scripts ?? {};
   const present = (file) => listFiles(join(run, 'src')).some((f) => basename(f) === file);
   return {
     'check-layout passes': problems.length === 0,
-    'priorities match': priorities === (PRIORITIES[name] ?? '0'),
+    'priorities match': priorities === (PRIORITIES[name] ?? '-'),
     'forwarder deleted, logic kept': (!FORWARDERS[name] || !present(FORWARDERS[name])) && (!KEPT[name] || present(KEPT[name])),
     'registry at src/app/generated': scripts.generate?.includes('src/app/generated/implscan-registry.ts') && existsSync(join(run, 'src/app/generated/implscan-registry.ts')),
     'all generator hooks': HOOKS.every((h) => scripts[h]?.includes('generate')),

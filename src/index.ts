@@ -24,8 +24,8 @@ export interface ImplScan {}
 export interface Dispatchable<TContext = void> extends ImplScan {
   /** Without a type argument the context is `void`: implementations declare `isApplicableTo()` and decide from their own state. */
   isApplicableTo(context: TContext): boolean;
-  /** Higher wins when several implementations are applicable; a tie throws. */
-  getPriority(): number;
+  /** Optional, defaults to 0. Higher wins when several implementations are applicable; a tie throws. */
+  getPriority?(): number;
 }
 
 /**

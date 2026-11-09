@@ -9,10 +9,6 @@ export class XmlStatementExporter implements StatementExporter {
     return context.format === 'xml';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   export(total: number): string {
     return `xml:${total}:${SCHEMA_TABLE.length}`;
   }

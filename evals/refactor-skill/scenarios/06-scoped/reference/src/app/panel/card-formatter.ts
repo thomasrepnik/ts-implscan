@@ -10,10 +10,6 @@ export class CardFormatter implements PaymentFormatter {
     return context.method === 'card';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   format(amount: number): string {
     return `card#${this.state.count()}:${amount}`;
   }

@@ -9,10 +9,6 @@ export class PdfReceiptExporter implements ReceiptExporter {
     return context.format === 'pdf';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   export(lines: string[]): string {
     return `PDF[${lines.join('|')}]`;
   }
