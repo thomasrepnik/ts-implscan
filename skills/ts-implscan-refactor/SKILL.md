@@ -8,6 +8,17 @@ description: Use when refactoring existing Angular classes onto ts-implscan, int
 Every refactor produces the same shape, so that a codebase with dozens of dispatchers reads as one.
 Whether a dispatcher fits, and what the change could break, stay your judgement.
 
+## Before you start
+
+If `@thomasrepnik/ts-implscan` is not in `package.json`, install it first:
+
+```sh
+npm install --save-dev @thomasrepnik/ts-implscan
+```
+
+Then read `node_modules/@thomasrepnik/ts-implscan/README.md`. It documents the installed version, so
+read it there and not on npm or GitHub.
+
 ## The shape
 
 ### Specs
