@@ -44,6 +44,13 @@ test('highest priority wins among several applicable', () => {
   assert.equal(d.pay(5), 'b:5');
 });
 
+test('an implementation without getPriority counts as priority 0', () => {
+  const { getPriority: _, ...unranked } = fake('unranked', () => true, 0);
+  const d = new PaymentHandlerDispatcher([unranked, fake('ranked', () => true, 1)], () => ({ method: 'card' }));
+  assert.equal(d.pay(5), 'ranked:5');
+  assert.equal(new PaymentHandlerDispatcher([unranked], () => ({ method: 'card' })).getPriority(), 0);
+});
+
 test('tie for highest throws Ambiguous', () => {
   const d = new PaymentHandlerDispatcher([fake('a', () => true, 1), fake('b', () => true, 1)], () => ({ method: 'card' }));
   assert.throws(() => d.pay(5), /Ambiguous implementations.*HighestPriority=1/);

@@ -9,10 +9,6 @@ export class CardPaymentFlow implements PaymentFlow {
     return context.method === 'card';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   begin(amount: number): void {
     this.amount = amount;
   }

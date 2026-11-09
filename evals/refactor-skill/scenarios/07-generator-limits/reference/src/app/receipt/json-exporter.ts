@@ -11,10 +11,6 @@ export class JsonExporter implements ReceiptExporter {
     return context.kind === 'json';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   export(receipt: Receipt): string {
     return JSON.stringify({ total: this.money(receipt.total) });
   }

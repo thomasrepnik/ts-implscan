@@ -11,10 +11,6 @@ export class CsvExporter implements ReceiptExporter {
     return context.kind === 'csv';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   export(receipt: Receipt): string {
     return `total,${this.money(receipt.total)}`;
   }

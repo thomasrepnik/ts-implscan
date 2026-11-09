@@ -11,10 +11,6 @@ export class PaypalHandler implements PaymentHandler {
     return context.method === 'paypal';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   pay(amount: number): Observable<string> {
     return this.session$.pipe(map(({ token }) => `paypal:${amount}:${token}`));
   }

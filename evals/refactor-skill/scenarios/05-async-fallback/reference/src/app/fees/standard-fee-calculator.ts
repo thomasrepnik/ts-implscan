@@ -7,10 +7,6 @@ export class StandardFeeCalculator implements FeeCalculator {
     return true;
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   fee(amount: number): number {
     return (amount * 3) / 100;
   }

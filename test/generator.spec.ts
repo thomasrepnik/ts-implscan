@@ -16,7 +16,7 @@ import {
 } from '../src/dispatcher.ts';
 
 const MARKER_FILE = `export interface ImplScan {}
-export interface Dispatchable<T> extends ImplScan { isApplicableTo(context: T): boolean; getPriority(): number; }`;
+export interface Dispatchable<T> extends ImplScan { isApplicableTo(context: T): boolean; getPriority?(): number; }`;
 
 function project(files: Record<string, string>): Project {
   const p = new Project({ useInMemoryFileSystem: true, compilerOptions: { strict: true, target: ScriptTarget.ES2022 } });
@@ -200,7 +200,7 @@ test('renders the angular dispatcher', () => {
   }
 
   getPriority(): number {
-    return this.delegate.getPriority();
+    return this.delegate.getPriority?.() ?? 0;
   }
 
   get name(): string {
@@ -285,6 +285,12 @@ test('resolveDelegate source applies the selection rules', async () => {
   const high = impl('High', true, 2);
   assert.equal(resolveDelegate('X', [impl('Low', true, 1), high], {}), high);
   assert.throws(() => resolveDelegate('X', [impl('A', true, 1), impl('B', true, 1)], {}), /Ambiguous implementations.*HighestPriority=1.*HighestCandidates=A\(priority=1\), B\(priority=1\)/);
+  const unranked = (name: string) => new ({ [name]: class { isApplicableTo() { return true; } } }[name]!)();
+  const plain = unranked('Plain');
+  assert.equal(resolveDelegate('X', [plain, impl('Other', false, 9)], {}), plain);
+  const ranked = impl('Ranked', true, 1);
+  assert.equal(resolveDelegate('X', [unranked('Plain'), ranked], {}), ranked);
+  assert.throws(() => resolveDelegate('X', [unranked('A'), unranked('B')], {}), /Ambiguous implementations.*HighestPriority=0.*HighestCandidates=A\(priority=0\), B\(priority=0\)/);
   const circular: { self?: unknown } = {};
   circular.self = circular;
   assert.throws(() => resolveDelegate('X', [], circular), /context=\[object Object\]/);
@@ -327,7 +333,7 @@ test('renders the context-free angular dispatcher without context field or argum
   }
 
   getPriority(): number {
-    return this.delegate.getPriority();
+    return this.delegate.getPriority?.() ?? 0;
   }
 
   format(lines: string[]): string {

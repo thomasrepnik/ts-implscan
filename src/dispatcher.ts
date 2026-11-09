@@ -257,16 +257,17 @@ function specifierOf(imp: ImportDeclaration, importPath: (file: string) => strin
 }
 
 /** Emitted once per generated file: picks the implementation a dispatcher forwards to. */
-export const RESOLVE_DELEGATE_SOURCE = `function resolveDelegate<T, I extends { isApplicableTo(context: T): boolean; getPriority(): number }>(owner: string, implementations: I[], context?: T): I {
-  const describe = (candidates: I[]) => candidates.map((c) => \`\${c.constructor?.name ?? 'UnknownImplementation'}(priority=\${c.getPriority()})\`).join(', ');
+export const RESOLVE_DELEGATE_SOURCE = `function resolveDelegate<T, I extends { isApplicableTo(context: T): boolean; getPriority?(): number }>(owner: string, implementations: I[], context?: T): I {
+  const priority = (candidate: I) => candidate.getPriority?.() ?? 0;
+  const describe = (candidates: I[]) => candidates.map((c) => \`\${c.constructor?.name ?? 'UnknownImplementation'}(priority=\${priority(c)})\`).join(', ');
   const where = context === undefined ? '' : \` for context=\${stringify(context)}\`;
   const applicable = implementations.filter((candidate) => candidate.isApplicableTo(context as T));
   if (applicable.length === 0) {
     throw new Error(\`[\${owner}] No applicable implementation\${where}. Available=\${describe(implementations)}\`);
   }
   if (applicable.length === 1) return applicable[0]!;
-  const maxPriority = Math.max(...applicable.map((candidate) => candidate.getPriority()));
-  const topCandidates = applicable.filter((candidate) => candidate.getPriority() === maxPriority);
+  const maxPriority = Math.max(...applicable.map(priority));
+  const topCandidates = applicable.filter((candidate) => priority(candidate) === maxPriority);
   if (topCandidates.length === 1) return topCandidates[0]!;
   throw new Error(\`[\${owner}] Ambiguous implementations\${where}. HighestPriority=\${maxPriority}. Applicable=\${describe(applicable)}. HighestCandidates=\${describe(topCandidates)}\`);
 }
@@ -314,7 +315,7 @@ export function renderDispatcher(
       `    return this.delegate.isApplicableTo(${withContext ? 'context' : ''});`,
       '  }',
     ],
-    ['  getPriority(): number {', '    return this.delegate.getPriority();', '  }'],
+    ['  getPriority(): number {', '    return this.delegate.getPriority?.() ?? 0;', '  }'],
   ];
   for (const member of model.members) {
     if (member.kind === 'method') {

@@ -52,11 +52,13 @@ class, such as components, settings and stores, stays where it is.
 
 ### Priorities
 
-- The selection tests one value against a closed set, as a `switch` or ternary does: `getPriority()`
-  returns `0` in all of them.
+`getPriority()` is optional and defaults to `0`. Leave it out wherever it would return `0`.
+
+- The selection tests one value against a closed set, as a `switch` or ternary does: no
+  implementation declares `getPriority()`.
 - The conditions can overlap or a value can match nothing: the first branch gets the highest value, in
-  steps of 10, down to `0`. A final `else` becomes priority `0` with `isApplicableTo()` returning
-  `true`.
+  steps of 10, down to `10`. A final `else` becomes an implementation without `getPriority()`, with
+  `isApplicableTo()` returning `true`.
 
 ### The selecting class
 

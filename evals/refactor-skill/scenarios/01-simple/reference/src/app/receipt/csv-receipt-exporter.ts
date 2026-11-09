@@ -9,10 +9,6 @@ export class CsvReceiptExporter implements ReceiptExporter {
     return context.format === 'csv';
   }
 
-  getPriority(): number {
-    return 0;
-  }
-
   export(lines: string[]): string {
     return lines.join(',');
   }
