@@ -3,11 +3,10 @@
 [![npm](https://img.shields.io/npm/v/@thomasrepnik/ts-implscan)](https://www.npmjs.com/package/@thomasrepnik/ts-implscan)
 [![CI](https://github.com/thomasrepnik/ts-implscan/actions/workflows/ci.yml/badge.svg)](https://github.com/thomasrepnik/ts-implscan/actions/workflows/ci.yml)
 
-**Spring-style `List<PaymentHandler>` injection for TypeScript, plus a generated dispatcher that
-picks the right one.** Mark an interface, and a build-time generator collects every class that
-implements it into a typed registry. For Angular it also generates the `InjectionToken`s and
-providers. Mark it as dispatchable, and you get a class that forwards each call to the one
-applicable implementation.
+**The open/closed principle for TypeScript, without the boilerplate.**
+
+Mark an interface, and ts-implscan finds every class that implements it at build time, then
+generates a typed registry, a dispatcher that picks the right one, and Angular providers.
 
 - [Installation](#installation)
 - [The three markers](#the-three-markers)

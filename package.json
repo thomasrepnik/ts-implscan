@@ -1,7 +1,7 @@
 {
   "name": "@thomasrepnik/ts-implscan",
   "version": "0.1.4",
-  "description": "Spring-style List<PaymentHandler> injection for TypeScript: find every class implementing a marked interface and generate a typed registry, plus Angular InjectionTokens and providers.",
+  "description": "Mark an interface, and ts-implscan finds every class that implements it at build time, then generates a typed registry, a dispatcher that picks the right one, and Angular providers.",
   "keywords": [
     "typescript",
     "dependency-injection",
@@ -11,7 +11,9 @@
     "code-generation",
     "ts-morph",
     "spring",
-    "component-scan"
+    "component-scan",
+    "open-closed-principle",
+    "solid"
   ],
   "homepage": "https://github.com/thomasrepnik/ts-implscan#readme",
   "bugs": {
